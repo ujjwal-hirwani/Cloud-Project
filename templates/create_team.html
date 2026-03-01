@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeamUp by ISOI - Create Team</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;700&family=Share+Tech+Mono&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --primary: #8a2be2;
+            --secondary: #00b4d8;
+            --accent: #00ff88;
+            --dark: #0a0a1a;
+            --darker: #050510;
+            --light: #f8f9fa;
+            --gray: #6c757d;
+            --success: #00cc66;
+            --warning: #ffcc00;
+            --danger: #ff3333;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Roboto Mono', monospace;
+            background: linear-gradient(135deg, var(--darker) 0%, var(--dark) 100%);
+            color: var(--light);
+            line-height: 1.6;
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--darker);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--secondary);
+        }
+
+        /* Header & Navigation */
+        header {
+            background: rgba(10, 10, 26, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 1px solid rgba(138, 43, 226, 0.3);
+        }
+
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .logo {
+            display: flex;
+            flex-direction: column;
+            font-family: 'Share Tech Mono', monospace;
+            z-index: 1001;
+        }
+
+        .logo span:first-child {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: 1px;
+        }
+
+        .logo span:last-child {
+            font-size: 0.9rem;
+            color: var(--secondary);
+            letter-spacing: 2px;
+        }
+
+        nav {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        nav a {
+            color: var(--light);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            position: relative;
+            padding: 0.5rem 0;
+        }
+
+        nav a:not(:last-child):after {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 2px;
+            bottom: 0;
+            left: 0;
+            background-color: var(--accent);
+            transition: width 0.3s ease;
+        }
+
+        nav a:not(:last-child):hover:after {
+            width: 100%;
+        }
+
+        nav a:last-child {
+            background: var(--primary);
+            padding: 0.5rem 1.5rem;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        nav a:last-child:hover {
+            background: var(--secondary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 180, 216, 0.3);
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+
+        .avatar {
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        /* Mobile Menu */
+        .menu-toggle {
+            display: none;
+            flex-direction: column;
+            justify-content: space-around;
+            width: 2rem;
+            height: 2rem;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            z-index: 1001;
+        }
+
+        .menu-toggle span {
+            width: 2rem;
+            height: 0.25rem;
+            background: var(--accent);
+            border-radius: 10px;
+            transition: all 0.3s linear;
+            position: relative;
+            transform-origin: 1px;
+        }
+
+        /* Main Content */
+        main {
+            flex: 1;
+            padding: 2rem;
+        }
+
+        .create-team-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: start;
+        }
+
+        /* Left Column - Form */
+        .form-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 2.5rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            animation: fadeIn 1s ease-out forwards;
+        }
+
+        .form-header {
+            margin-bottom: 2rem;
+        }
+
+        .form-header h2 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            color: var(--accent);
+        }
+
+        .form-header p {
+            color: #c2c2d6;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--light);
+            font-weight: 500;
+        }
+
+        .input-group {
+            position: relative;
+        }
+
+        .input-group i {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--gray);
+            transition: color 0.3s ease;
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 0.75rem 1rem 0.75rem 2.5rem;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--light);
+            font-family: 'Roboto Mono', monospace;
+            transition: all 0.3s ease;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(138, 43, 226, 0.3);
+        }
+
+        input:focus+i,
+        textarea:focus+i {
+            color: var(--primary);
+        }
+
+        .char-count {
+            font-size: 0.8rem;
+            color: #c2c2d6;
+            margin-top: 0.5rem;
+            text-align: right;
+        }
+
+        .char-count.limit {
+            color: var(--danger);
+        }
+
+        button[type="submit"] {
+            width: 100%;
+            padding: 1rem;
+            border-radius: 4px;
+            border: none;
+            background: var(--primary);
+            color: var(--light);
+            font-weight: 600;
+            font-family: 'Roboto Mono', monospace;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        button[type="submit"]:hover {
+            background: var(--secondary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 180, 216, 0.3);
+        }
+
+        /* Right Column - Info */
+        .info-section {
+            padding: 1rem 0;
+        }
+
+        .info-section h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            line-height: 1.2;
+            color: var(--accent);
+        }
+
+        .info-section p {
+            font-size: 1.2rem;
+            margin-bottom: 2.5rem;
+            color: #c2c2d6;
+        }
+
+        .features-list {
+            margin-bottom: 2.5rem;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+            color: #c2c2d6;
+        }
+
+        .feature-item i {
+            color: var(--accent);
+            margin-right: 1rem;
+            font-size: 1.2rem;
+            margin-top: 0.2rem;
+        }
+
+        .example-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            transition: all 0.4s ease;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .example-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+            border-color: rgba(138, 43, 226, 0.5);
+        }
+
+        .example-card h3 {
+            font-size: 1.2rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .example-card p {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            color: #c2c2d6;
+        }
+
+        .example-card .divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 1rem 0;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        /* Footer */
+        footer {
+            background: var(--darker);
+            padding: 2rem;
+            margin-top: auto;
+        }
+
+        .footer-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .footer-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .footer-brand i {
+            color: var(--accent);
+            font-size: 1.5rem;
+            margin-right: 0.5rem;
+        }
+
+        .footer-brand span {
+            font-family: 'Share Tech Mono', monospace;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .footer-text {
+            color: #c2c2d6;
+            font-size: 0.9rem;
+        }
+
+        .footer-social {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .footer-social a {
+            color: var(--light);
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+        }
+
+        .footer-social a:hover {
+            color: var(--accent);
+            transform: translateY(-3px);
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 992px) {
+            .create-team-container {
+                grid-template-columns: 1fr;
+                gap: 3rem;
+            }
+
+            /* CHANGED: Remove the order property to make form appear first */
+            .info-section {
+                text-align: center;
+            }
+
+            .info-section h1 {
+                font-size: 2.2rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header-container {
+                flex-direction: row;
+            }
+
+            .menu-toggle {
+                display: flex;
+            }
+
+            nav {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100vh;
+                width: 100%;
+                flex-direction: column;
+                justify-content: center;
+                background: var(--darker);
+                clip-path: circle(0px at top right);
+                transition: all 0.8s ease-out;
+                gap: 2rem;
+            }
+
+            nav.open {
+                clip-path: circle(150% at top right);
+            }
+
+            .user-profile span {
+                display: none;
+            }
+
+            .form-section {
+                padding: 2rem 1.5rem;
+            }
+
+            .info-section h1 {
+                font-size: 2rem;
+            }
+
+            .info-section p {
+                font-size: 1rem;
+            }
+
+            .footer-container {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navbar -->
+    <header>
+        <div class="header-container">
+            <div class="logo">
+                <span>TeamUp</span>
+                <span>by ISOI</span>
+            </div>
+
+            <button class="menu-toggle" id="menu-toggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+
+            <nav id="nav">
+                <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                <a href="{{ url_for('join_team') }}">Join Team</a>
+                <div class="user-profile">
+                    <div class="avatar">
+                        {{ user.first_name[0]|upper }}
+                    </div>
+                    <span>{{ user.first_name }}</span>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+        <div class="create-team-container">
+            <!-- Left Column - Form -->
+            <section class="form-section">
+                <div class="form-header">
+                    <h2>Create New Team</h2>
+                    <p>Start collaborating on projects and hackathons</p>
+                </div>
+
+                <form action="{{ url_for('create_team') }}" method="POST">
+                    <div class="form-group">
+                        <label for="team_name">Team Name</label>
+                        <div class="input-group">
+                            <i class="fas fa-users"></i>
+                            <input type="text" id="team_name" name="team_name" required
+                                placeholder="e.g., Web Warriors">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description (Optional)</label>
+                        <div class="input-group">
+                            <i class="fas fa-file-alt"></i>
+                            <textarea id="description" name="description" rows="4"
+                                placeholder="Describe your team's purpose, skills, or project focus"></textarea>
+                        </div>
+                        <p class="char-count" id="char-count">0/250 characters</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="github_repo">GitHub Repository URL</label>
+                        <div class="input-group">
+                            <i class="fab fa-github"></i>
+                            <input type="url" id="github_repo" name="github_repo" required
+                                placeholder="https://github.com/yourusername/repository">
+                        </div>
+                    </div>
+
+                    <button type="submit">
+                        Create Team
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </form>
+            </section>
+
+            <!-- Right Column - Info -->
+            <section class="info-section">
+                <h1>Build your dream team.</h1>
+                <p>
+                    Create a team to collaborate on projects, participate in hackathons,
+                    and bring innovative ideas to life with skilled developers.
+                </p>
+
+                <div class="features-list">
+                    <div class="feature-item">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Collaborate on projects and share code</p>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Participate in ISOI hackathons and events</p>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Find teammates with complementary skills</p>
+                    </div>
+                </div>
+
+                <div class="example-card">
+                    <h3>Web Development Team</h3>
+                    <p>4 members</p>
+                    <p>Active since September 2023 • 3 projects</p>
+                    <div class="divider"></div>
+                    <p>Focus: Full-stack development, React, Node.js</p>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-container">
+            <div class="footer-brand">
+                <i class="fas fa-people-group"></i>
+                <span>TeamUp</span>
+            </div>
+            <p class="footer-text">© 2025 TeamUp by ISOI-VIT. All rights reserved.</p>
+            <div class="footer-social">
+                <a href="https://www.instagram.com/isoi.vit?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw=="
+                    target="_blank"><i class="fab fa-instagram"></i></a>
+                <a href="https://www.linkedin.com/company/isoi-vit-vellore/posts/?feedView=all" target="_blank"><i
+                        class="fab fa-linkedin"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile menu toggle
+        const menuToggle = document.getElementById('menu-toggle');
+        const nav = document.getElementById('nav');
+
+        menuToggle.addEventListener('click', () => {
+            nav.classList.toggle('open');
+            menuToggle.classList.toggle('active');
+        });
+
+        // Close menu when clicking on a link
+        const navLinks = document.querySelectorAll('nav a');
+        navLinks.forEach(link => {
+            link.addEventListener('click', () => {
+                nav.classList.remove('open');
+                menuToggle.classList.remove('active');
+            });
+        });
+
+        // Character counter for description
+        const description = document.getElementById('description');
+        const charCount = document.getElementById('char-count');
+
+        if (description && charCount) {
+            description.addEventListener('input', function () {
+                const length = this.value.length;
+                charCount.textContent = `${length}/250 characters`;
+
+                if (length > 250) {
+                    this.value = this.value.substring(0, 250);
+                    charCount.textContent = "250/250 characters (limit reached)";
+                    charCount.classList.add('limit');
+                } else if (length > 200) {
+                    charCount.classList.add('limit');
+                } else {
+                    charCount.classList.remove('limit');
+                }
+            });
+        }
+
+        // Input focus effects
+        const inputs = document.querySelectorAll('input, textarea');
+
+        inputs.forEach(input => {
+            input.addEventListener('focus', function () {
+                const icon = this.parentElement.querySelector('i');
+                if (icon) {
+                    icon.style.color = 'var(--primary)';
+                }
+            });
+
+            input.addEventListener('blur', function () {
+                const icon = this.parentElement.querySelector('i');
+                if (icon && !this.value) {
+                    icon.style.color = 'var(--gray)';
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
