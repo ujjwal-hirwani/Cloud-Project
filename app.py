@@ -53,6 +53,7 @@ class User(UserMixin):
         self.first_name = user_data['first_name']
         self.last_name = user_data['last_name']
         self.email = user_data['email']
+        self.role = user_data.get('role', 'participant') 
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -117,6 +118,7 @@ def signup():
         first_name = request.form['first_name'].strip()
         last_name = request.form['last_name'].strip()
         email = request.form['email'].strip().lower()
+        role = request.form['role']
 
         # Existence checks
         if users_collection.find_one({'regn_no': regn_no}):
@@ -132,14 +134,15 @@ def signup():
         expiry_time = datetime.utcnow() + timedelta(minutes=5)
 
         users_collection.insert_one({
-            'regn_no': regn_no,
-            'password': hashed_pw,
-            'first_name': first_name,
-            'last_name': last_name,
-            'email': email,
-            'verified': False,
-            'otp': otp,
-            'otp_expiry': expiry_time
+        'regn_no': regn_no,
+        'password': hashed_pw,
+        'first_name': first_name,
+        'last_name': last_name,
+        'email': email,
+        'role': role,  
+        'verified': False,
+        'otp': otp,
+        'otp_expiry': expiry_time
         })
 
         # Send OTP
@@ -223,22 +226,37 @@ def login():
             return render_template('login.html', message=message)
 
         user_data = users_collection.find_one({'email': email})
+
         if user_data and check_password(password, user_data['password']):
+
+            # Check email verification
             if not user_data.get('verified', False):
                 return redirect(url_for('verify_email', email=email))
 
             user = User(user_data)
             login_user(user)
-            return redirect(url_for('dashboard'))
+
+            # ✅ Role-based redirection
+            role = user_data.get('role', 'participant')
+
+            if role == 'participant':
+                return redirect(url_for('participant_dashboard'))
+            elif role == 'organizer':
+                return redirect(url_for('organizer_dashboard'))
+            else:
+                message = "Invalid user role."
+                logout_user()
+                return render_template('login.html', message=message)
+
         else:
             message = "Invalid credentials."
 
     return render_template('login.html', message=message)
 
 # ----- Dashboard -----
-@app.route('/dashboard')
+@app.route('/participant_dashboard')
 @login_required
-def dashboard():
+def participant_dashboard():
     # Fetch all teams where current user is a member
     teams = list(teams_collection.find({"users": current_user.regn_no}))
 
@@ -261,12 +279,18 @@ def dashboard():
     leaderboard_teams = sorted(leaderboard_teams, key=lambda x: x["points"], reverse=True)
 
     return render_template(
-        "dashboard.html",
+        "participant_dashboard.html",
         user=current_user,
         teams=teams,
         leaderboard=leaderboard_teams
     )
 
+@app.route('/organizer_dashboard')
+@login_required
+def organizer_dashboard():
+    if current_user.role != 'organizer':
+        return "Unauthorized", 403
+    return render_template('organizer_dashboard.html')
 
 
 # ----- Create Team -----
@@ -611,4 +635,4 @@ def admin_logout():
 # -----------------------------
 if __name__ == "__main__":
     # Avoid reloader sending duplicate emails; use debug=True during dev if you want
-    app.run(debug=False)
+    app.run(debug=True)

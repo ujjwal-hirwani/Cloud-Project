@@ -528,11 +528,13 @@
             .hero-content {
                 padding-left: 0;
                 text-align: center;
-                order: 2; /* Hero content moves to bottom on mobile */
+                order: 2;
+                /* Hero content moves to bottom on mobile */
             }
 
             .form-container {
-                order: 1; /* Form moves to top on mobile */
+                order: 1;
+                /* Form moves to top on mobile */
             }
 
             .hero-content h1 {
@@ -662,6 +664,20 @@
                     </div>
 
                     <div class="form-group">
+                        <label>Register As</label>
+                        <div class="radio-group">
+                            <label>
+                                participant
+                                <input type="radio" name="role" value="participant" required>
+                            </label>
+                            <label style="margin-left: 20px;">
+                                Organizer
+                                <input type="radio" name="role" value="organizer" required>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
                         <label for="password">Password</label>
                         <div class="input-group">
                             <i class="fas fa-lock"></i>
@@ -732,8 +748,10 @@
             </div>
             <p class="footer-text">© 2025 TeamUp by ISOI-VIT. All rights reserved.</p>
             <div class="footer-social">
-                <a href="https://www.instagram.com/isoi.vit?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==" target="_blank"><i class="fab fa-instagram"></i></a>
-                <a href="https://www.linkedin.com/company/isoi-vit-vellore/posts/?feedView=all" target="_blank"><i class="fab fa-linkedin"></i></a>
+                <a href="https://www.instagram.com/isoi.vit?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw=="
+                    target="_blank"><i class="fab fa-instagram"></i></a>
+                <a href="https://www.linkedin.com/company/isoi-vit-vellore/posts/?feedView=all" target="_blank"><i
+                        class="fab fa-linkedin"></i></a>
             </div>
         </div>
     </footer>
