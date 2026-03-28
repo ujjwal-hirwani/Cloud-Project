@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Organizer Dashboard – TeamUp{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="page-header flex-between">
+        <div>
+            <h1>Organizer Dashboard</h1>
+            <p>Welcome, {{ user.first_name }}. Manage your hackathons here.</p>
+        </div>
+        <a href="{{ url_for('create_hackathon') }}" class="btn btn-primary">+ New Hackathon</a>
+    </div>
+
+    {% if hackathons %}
+    <div class="card-grid">
+        {% for h in hackathons %}
+        <div class="card">
+            <div class="flex-between" style="margin-bottom:0.5rem;">
+                <h3>{{ h.name }}</h3>
+                <span class="badge badge-{{ h.status }}">{{ h.status|capitalize }}</span>
+            </div>
+            <p>{{ h.description[:100] }}{% if h.description|length > 100 %}…{% endif %}</p>
+            <div class="stat-grid" style="margin-top:1rem;grid-template-columns:repeat(3,1fr);gap:0.5rem;">
+                <div class="stat-tile">
+                    <div class="stat-num" style="font-size:1.3rem;">{{ h.participant_count }}</div>
+                    <div class="stat-label">Participants</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="stat-num" style="font-size:1.3rem;">{{ h.team_count }}</div>
+                    <div class="stat-label">Teams</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="stat-num" style="font-size:1.3rem;">{{ h.join_code }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Join Code</div>
+                </div>
+            </div>
+            <div style="margin-top:1rem;display:flex;gap:0.5rem;">
+                <a href="{{ url_for('organizer_hackathon_detail', hackathon_id=h._id) }}" class="btn btn-primary btn-sm">Manage</a>
+                <a href="{{ url_for('edit_hackathon', hackathon_id=h._id) }}" class="btn btn-outline btn-sm">Edit</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+        <div style="font-size:2.5rem;">🎯</div>
+        <p>No hackathons created yet.</p>
+        <a href="{{ url_for('create_hackathon') }}" class="btn btn-primary btn-sm" style="margin-top:1rem;">Create your first</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

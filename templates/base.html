@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}TeamUp{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:       #0d0f14;
+            --surface:  #151820;
+            --border:   #252a36;
+            --accent:   #5b8df6;
+            --accent2:  #9b59f5;
+            --danger:   #e05252;
+            --success:  #4caf78;
+            --text:     #e8eaf0;
+            --muted:    #6b7280;
+            --radius:   10px;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 15px;
+            min-height: 100vh;
+        }
+
+        /* ── NAV ── */
+        nav {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 2rem;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .nav-brand {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: 1.3rem;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-decoration: none;
+        }
+        .nav-links { display: flex; gap: 0.5rem; align-items: center; }
+        .nav-links a {
+            color: var(--muted);
+            text-decoration: none;
+            padding: 0.4rem 0.9rem;
+            border-radius: var(--radius);
+            font-size: 0.88rem;
+            transition: all 0.18s;
+        }
+        .nav-links a:hover { color: var(--text); background: var(--border); }
+        .nav-links .btn-nav {
+            color: var(--accent);
+            border: 1px solid var(--accent);
+        }
+        .nav-links .btn-nav:hover { background: var(--accent); color: #fff; }
+
+        /* ── LAYOUT ── */
+        .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+        .page-header { margin-bottom: 2rem; }
+        .page-header h1 {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+        .page-header p { color: var(--muted); font-size: 0.9rem; }
+
+        /* ── CARDS ── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.4rem;
+            margin-bottom: 1rem;
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+        .card h2, .card h3 {
+            font-family: 'Syne', sans-serif;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .card p { color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
+
+        /* ── BUTTONS ── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.5rem 1.1rem;
+            border-radius: var(--radius);
+            border: none;
+            cursor: pointer;
+            font-size: 0.88rem;
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.18s;
+            white-space: nowrap;
+        }
+        .btn-primary  { background: var(--accent);  color: #fff; }
+        .btn-primary:hover  { opacity: 0.85; }
+        .btn-secondary { background: var(--border); color: var(--text); }
+        .btn-secondary:hover { background: #2e3448; }
+        .btn-danger   { background: var(--danger);  color: #fff; }
+        .btn-danger:hover   { opacity: 0.85; }
+        .btn-success  { background: var(--success); color: #fff; }
+        .btn-outline  { background: transparent; border: 1px solid var(--border); color: var(--text); }
+        .btn-outline:hover  { border-color: var(--accent); color: var(--accent); }
+        .btn-sm { padding: 0.3rem 0.75rem; font-size: 0.8rem; }
+
+        /* ── FORMS ── */
+        .form-group { margin-bottom: 1.1rem; }
+        label { display: block; font-size: 0.83rem; color: var(--muted); margin-bottom: 0.35rem; }
+        input[type="text"], input[type="email"], input[type="password"],
+        input[type="number"], input[type="date"], textarea, select {
+            width: 100%;
+            padding: 0.6rem 0.9rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.9rem;
+            transition: border-color 0.18s;
+            outline: none;
+        }
+        input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+        textarea { resize: vertical; min-height: 90px; }
+        select option { background: var(--surface); }
+
+        /* ── BADGES ── */
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.65rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-open    { background: rgba(76,175,120,0.15); color: var(--success); }
+        .badge-closed  { background: rgba(224,82,82,0.15);  color: var(--danger); }
+        .badge-draft   { background: rgba(107,114,128,0.2); color: var(--muted); }
+        .badge-locked  { background: rgba(155,89,245,0.15); color: var(--accent2); }
+
+        /* ── ALERTS ── */
+        .alert {
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius);
+            margin-bottom: 1rem;
+            font-size: 0.88rem;
+        }
+        .alert-error   { background: rgba(224,82,82,0.12);  border-left: 3px solid var(--danger);  color: #f08080; }
+        .alert-success { background: rgba(76,175,120,0.12); border-left: 3px solid var(--success); color: #6dcf96; }
+        .alert-info    { background: rgba(91,141,246,0.12); border-left: 3px solid var(--accent);  color: #91b4f9; }
+
+        /* ── TABLE ── */
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th { text-align: left; color: var(--muted); font-weight: 500; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); }
+        td { padding: 0.7rem 0.8rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+
+        /* ── DIVIDER ── */
+        .divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+        /* ── FLEX UTILS ── */
+        .flex { display: flex; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        .flex-center  { display: flex; align-items: center; gap: 0.5rem; }
+        .gap-1 { gap: 0.5rem; }
+        .gap-2 { gap: 1rem; }
+        .mt-1 { margin-top: 0.5rem; }
+        .mt-2 { margin-top: 1rem; }
+        .mb-0 { margin-bottom: 0; }
+
+        /* ── STAT TILES ── */
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+        .stat-tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; text-align: center; }
+        .stat-tile .stat-num { font-family: 'Syne', sans-serif; font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+        .stat-tile .stat-label { font-size: 0.78rem; color: var(--muted); margin-top: 0.2rem; }
+
+        /* ── SECTION HEADER ── */
+        .section-header { font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 700; margin-bottom: 1rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+        /* ── EMPTY STATE ── */
+        .empty { text-align: center; padding: 3rem; color: var(--muted); }
+        .empty p { font-size: 0.9rem; margin-top: 0.5rem; }
+
+        /* ── CODE ── */
+        .code-chip {
+            display: inline-block;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.2rem 0.6rem;
+            font-family: monospace;
+            font-size: 0.88rem;
+            letter-spacing: 0.05em;
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+<nav>
+    <a class="nav-brand" href="/">TeamUp</a>
+    <div class="nav-links">
+        {% if current_user.is_authenticated %}
+            {% if current_user.role == 'organizer' %}
+                <a href="{{ url_for('organizer_dashboard') }}">My Hackathons</a>
+            {% else %}
+                <a href="{{ url_for('participant_dashboard') }}">Dashboard</a>
+            {% endif %}
+            <span style="color:var(--muted);font-size:0.8rem;">{{ current_user.first_name }}</span>
+            <a href="{{ url_for('logout') }}" class="btn-nav">Logout</a>
+        {% else %}
+            <a href="{{ url_for('login') }}">Login</a>
+            <a href="{{ url_for('signup') }}" class="btn-nav">Sign Up</a>
+        {% endif %}
+    </div>
+</nav>
+
+{% block content %}{% endblock %}
+</body>
+</html>
