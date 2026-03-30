@@ -1,87 +1,75 @@
 {% extends "base.html" %}
-{% block title %}Dashboard – TeamUp{% endblock %}
+{% block title %}Dashboard — TeamUp{% endblock %}
 {% block content %}
-<div class="container">
-    <div class="page-header flex-between">
-        <div>
-            <h1>Hi, {{ user.first_name }} 👋</h1>
-            <p>Your participant dashboard</p>
-        </div>
-        <a href="{{ url_for('join_hackathon') }}" class="btn btn-primary">+ Join Hackathon</a>
+<div class="page fade-up">
+  <div class="flex-between page-header">
+    <div>
+      <h1>Dashboard</h1>
+      <p>Welcome back, {{ current_user.first_name }}</p>
     </div>
+    <a href="{{ url_for('join_hackathon') }}" class="btn btn-primary">Join a hackathon</a>
+  </div>
 
-    <!-- My Hackathons -->
-    <div class="section-header">My Hackathons</div>
-    {% if my_hackathons %}
-    <div class="card-grid">
-        {% for h in my_hackathons %}
-        <div class="card">
-            <div class="flex-between" style="margin-bottom:0.5rem;">
-                <h3>{{ h.name }}</h3>
-                <span class="badge badge-{{ h.status }}">{{ h.status|capitalize }}</span>
-            </div>
-            <p>{{ h.description[:100] }}{% if h.description|length > 100 %}…{% endif %}</p>
-            {% if h.start_date %}
-            <p style="font-size:0.8rem;color:var(--muted);margin-top:0.4rem;">📅 {{ h.start_date }}{% if h.end_date %} → {{ h.end_date }}{% endif %}</p>
-            {% endif %}
-            <div style="margin-top:1rem;display:flex;gap:0.5rem;">
-                <a href="{{ url_for('hackathon_lobby', hackathon_id=h._id) }}" class="btn btn-primary btn-sm">Enter</a>
-                <form method="POST" action="{{ url_for('leave_hackathon', hackathon_id=h._id) }}" style="display:inline;" onsubmit="return confirm('Leave this hackathon?');">
-                    <button type="submit" class="btn btn-outline btn-sm">Leave</button>
-                </form>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
+  <!-- My Hackathons -->
+  <p class="section-label">My Hackathons</p>
+  {% if my_hackathons %}
+  <div class="card-grid mb-2" style="margin-bottom:2.5rem;">
+    {% for h in my_hackathons %}
     <div class="card">
-        <div class="empty">
-            <div style="font-size:2rem;">🏁</div>
-            <p>You haven't joined any hackathons yet.</p>
-            <a href="{{ url_for('join_hackathon') }}" class="btn btn-primary btn-sm" style="margin-top:1rem;">Join one now</a>
-        </div>
+      <div class="flex-between" style="margin-bottom:0.6rem;">
+        <span class="badge badge-{{ h.status }}">{{ h.status|capitalize }}</span>
+        <span class="text-small text-muted">{{ h.team_count }} team{{ 's' if h.team_count != 1 }}</span>
+      </div>
+      <h3 style="font-family:var(--font-serif);font-size:1.05rem;font-weight:600;margin-bottom:0.3rem;">{{ h.name }}</h3>
+      <p class="text-small text-muted" style="margin-bottom:0.75rem;line-height:1.5;">
+        {{ h.description[:90] }}{% if h.description|length > 90 %}…{% endif %}
+      </p>
+      {% if h.my_team_name %}
+      <p class="text-small" style="margin-bottom:0.75rem;">
+        <span class="text-muted">Team:</span>
+        <span class="chip">{{ h.my_team_name }}</span>
+      </p>
+      {% else %}
+      <p class="text-small text-muted" style="margin-bottom:0.75rem;">No team yet</p>
+      {% endif %}
+      <div class="flex-center gap-1">
+        <a href="{{ url_for('hackathon_lobby', hackathon_id=h._id) }}" class="btn btn-primary btn-sm">Enter →</a>
+        <form method="POST" action="{{ url_for('leave_hackathon', hackathon_id=h._id) }}"
+              onsubmit="return confirm('Leave this hackathon?');">
+          <button type="submit" class="btn btn-ghost btn-sm">Leave</button>
+        </form>
+      </div>
     </div>
-    {% endif %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card" style="margin-bottom:2.5rem;">
+    <div class="empty">
+      <div class="empty-icon">🏁</div>
+      <p>You haven't joined any hackathons yet.</p>
+      <a href="{{ url_for('join_hackathon') }}" class="btn btn-primary btn-sm">Join one now</a>
+    </div>
+  </div>
+  {% endif %}
 
-    <!-- My Teams -->
-    {% if teams %}
-    <div class="section-header" style="margin-top:2rem;">My Teams</div>
-    <div class="card-grid">
-        {% for team in teams %}
-        <div class="card">
-            <div class="flex-between" style="margin-bottom:0.3rem;">
-                <h3>{{ team.team_name }}</h3>
-                <span style="font-size:0.8rem;color:var(--muted);">{{ team.hackathon_name }}</span>
-            </div>
-            <p>{{ team.description[:80] }}{% if team.description|length > 80 %}…{% endif %}</p>
-            <p style="margin-top:0.5rem;font-size:0.8rem;color:var(--muted);">
-                Code: <span class="code-chip">{{ team.code }}</span>
-            </p>
-            <div style="margin-top:1rem;">
-                <a href="{{ url_for('team', team_id=team._id) }}" class="btn btn-outline btn-sm">View Team</a>
-            </div>
-        </div>
-        {% endfor %}
+  <!-- Discover -->
+  {% if open_hackathons %}
+  <p class="section-label">Discover</p>
+  <div class="card-grid">
+    {% for h in open_hackathons %}
+    <div class="card" style="border-color:var(--border-2);">
+      <div class="flex-between" style="margin-bottom:0.6rem;">
+        <span class="badge badge-open">Open</span>
+        <span class="text-small text-muted">{{ h.participant_count }} joined</span>
+      </div>
+      <h3 style="font-family:var(--font-serif);font-size:1.05rem;font-weight:600;margin-bottom:0.3rem;">{{ h.name }}</h3>
+      <p class="text-small text-muted" style="margin-bottom:1rem;line-height:1.5;">
+        {{ h.description[:90] }}{% if h.description|length > 90 %}…{% endif %}
+      </p>
+      <a href="{{ url_for('join_hackathon') }}" class="btn btn-ghost btn-sm">Join →</a>
     </div>
-    {% endif %}
-
-    <!-- Open Hackathons to Discover -->
-    {% if open_hackathons %}
-    <div class="section-header" style="margin-top:2rem;">Discover</div>
-    <div class="card-grid">
-        {% for h in open_hackathons %}
-        <div class="card" style="border-color:rgba(91,141,246,0.2);">
-            <div class="flex-between" style="margin-bottom:0.5rem;">
-                <h3>{{ h.name }}</h3>
-                <span class="badge badge-open">Open</span>
-            </div>
-            <p>{{ h.description[:100] }}{% if h.description|length > 100 %}…{% endif %}</p>
-            <div style="margin-top:1rem;">
-                <a href="{{ url_for('join_hackathon') }}" class="btn btn-primary btn-sm">Join</a>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

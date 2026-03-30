@@ -4,1037 +4,851 @@ from flask_pymongo import PyMongo
 from bson.objectid import ObjectId
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-import pytz
-import gridfs
-from io import BytesIO
-from werkzeug.utils import secure_filename
-import bcrypt
-import random, string
-import os
 from functools import wraps
+from werkzeug.utils import secure_filename
+import boto3
+from botocore.exceptions import ClientError
+import bcrypt
+import random
+import string
+import pytz
+import os
+import uuid
 
-# Load environment variables
 load_dotenv()
 
-# -----------------------------
-# Initialize app
-# -----------------------------
+# ─────────────────────────────────────────
+# App
+# ─────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
-IST = pytz.timezone('Asia/Kolkata')
+IST = pytz.timezone("Asia/Kolkata")
 
-# -----------------------------
-# MongoDB Atlas (Flask-PyMongo)
-# -----------------------------
+# ─────────────────────────────────────────
+# MongoDB
+# ─────────────────────────────────────────
 app.config["MONGO_URI"] = os.getenv("MONGO_URI")
 mongo = PyMongo(app)
+users_col      = mongo.db.users
+teams_col      = mongo.db.teams
+hackathons_col = mongo.db.hackathons
 
-users_collection       = mongo.db.users
-teams_collection       = mongo.db.teams
-hackathons_collection  = mongo.db.hackathons
-fs = gridfs.GridFS(mongo.db)
+# ─────────────────────────────────────────
+# AWS S3
+# ─────────────────────────────────────────
+s3 = boto3.client(
+    "s3",
+    aws_access_key_id     = os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name           = os.getenv("AWS_REGION", "ap-south-1"),
+)
+S3_BUCKET = os.getenv("AWS_BUCKET_NAME")
+S3_REGION = os.getenv("AWS_REGION", "ap-south-1")
 
-ALLOWED_EXTENSIONS = {'pdf', 'docx', 'ppt', 'pptx'}
-MAX_FILE_SIZE = 2 * 1024 * 1024  # 2 MB
+ALLOWED_EXT   = {"pdf", "docx", "ppt", "pptx"}
+MAX_FILE_SIZE = 2 * 1024 * 1024
 
-# -----------------------------
-# Flask-Login setup
-# -----------------------------
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
-
-# -----------------------------
-# User model wrapper
-# -----------------------------
-class User(UserMixin):
-    def __init__(self, user_data):
-        self.id         = str(user_data['_id'])
-        self.regn_no    = user_data['regn_no']
-        self.first_name = user_data['first_name']
-        self.last_name  = user_data['last_name']
-        self.email      = user_data['email']
-        self.role       = user_data.get('role', 'participant')
-
-@login_manager.user_loader
-def load_user(user_id):
-    data = users_collection.find_one({"_id": ObjectId(user_id)})
-    return User(data) if data else None
-
-# -----------------------------
-# Utilities
-# -----------------------------
-def hash_password(password: str) -> str:
-    salt   = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-    return hashed.decode('utf-8')
-
-def check_password(entered_password: str, stored_hashed_password: str) -> bool:
-    return bcrypt.checkpw(entered_password.encode('utf-8'), stored_hashed_password.encode('utf-8'))
-
-def generate_otp() -> str:
-    return str(random.randint(100000, 999999))
+MIME_MAP = {
+    "pdf":  "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "ppt":  "application/vnd.ms-powerpoint",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
 
-def generate_unique_code(length=6):
+def s3_upload(file_obj, key, filename):
+    ext  = filename.rsplit(".", 1)[1].lower()
+    mime = MIME_MAP.get(ext, "application/octet-stream")
+    s3.upload_fileobj(file_obj, S3_BUCKET, key,
+                      ExtraArgs={"ContentType": mime, "ACL": "private"})
+
+def s3_delete(key):
+    try:
+        s3.delete_object(Bucket=S3_BUCKET, Key=key)
+    except ClientError:
+        pass
+
+def s3_presign(key, expires=300):
+    return s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": S3_BUCKET, "Key": key},
+        ExpiresIn=expires,
+    )
+
+def make_s3_key(team_id, filename):
+    uid = uuid.uuid4().hex[:8]
+    return f"teams/{team_id}/{uid}_{filename}"
+
+# ─────────────────────────────────────────
+# Flask-Login
+# ─────────────────────────────────────────
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
+class User(UserMixin):
+    def __init__(self, d):
+        self.id         = str(d["_id"])
+        self.regn_no    = d["regn_no"]
+        self.first_name = d["first_name"]
+        self.last_name  = d["last_name"]
+        self.email      = d["email"]
+        self.role       = d.get("role", "participant")
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}"
+
+@login_manager.user_loader
+def load_user(uid):
+    d = users_col.find_one({"_id": ObjectId(uid)})
+    return User(d) if d else None
+
+# ─────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────
+def hash_pw(pw):
+    return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
+
+def check_pw(plain, hashed):
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
+
+def gen_otp():
+    return str(random.randint(100000, 999999))
+
+def gen_code(length, col, field):
     while True:
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
-        if not teams_collection.find_one({"code": code}):
+        code = "".join(random.choices(string.ascii_uppercase + string.digits, k=length))
+        if not col.find_one({field: code}):
             return code
 
-def generate_hackathon_code(length=8):
-    while True:
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
-        if not hackathons_collection.find_one({"join_code": code}):
-            return code
+def now_ist():
+    return datetime.now(IST)
 
-from email_sender import send_email  # after utilities to avoid circulars
+def name_of(regn_no):
+    u = users_col.find_one({"regn_no": regn_no})
+    return f"{u.get('first_name','')} {u.get('last_name','')}".strip() if u else regn_no
 
-# -----------------------------
+def enrich_team(t):
+    t["_id"]          = str(t["_id"])
+    t["points"]       = t.get("points", 0)
+    t["member_count"] = len(t.get("users", []))
+    t["files"]        = t.get("files", [])
+    t["member_names"] = [name_of(r) for r in t.get("users", [])]
+    return t
+
+from email_sender import send_email
+
+# ─────────────────────────────────────────
 # Decorators
-# -----------------------------
+# ─────────────────────────────────────────
 def admin_required(f):
     @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('admin_logged_in'):
-            return redirect(url_for('admin_login'))
-        return f(*args, **kwargs)
-    return decorated_function
+    def inner(*a, **kw):
+        if not session.get("admin_logged_in"):
+            return redirect(url_for("admin_login"))
+        return f(*a, **kw)
+    return inner
 
-def organizer_required(f):
+def organizer_only(f):
     @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role != 'organizer':
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return decorated_function
+    def inner(*a, **kw):
+        if not current_user.is_authenticated or current_user.role != "organizer":
+            return redirect(url_for("login"))
+        return f(*a, **kw)
+    return inner
 
-def participant_required(f):
+def participant_only(f):
     @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role != 'participant':
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return decorated_function
+    def inner(*a, **kw):
+        if not current_user.is_authenticated or current_user.role != "participant":
+            return redirect(url_for("login"))
+        return f(*a, **kw)
+    return inner
 
-# Helper: check if current organizer owns hackathon
-def get_hackathon_or_403(hackathon_id, check_owner=False):
-    hackathon = hackathons_collection.find_one({"_id": ObjectId(hackathon_id)})
-    if not hackathon:
+def fetch_hackathon(hackathon_id, check_owner=False):
+    h = hackathons_col.find_one({"_id": ObjectId(hackathon_id)})
+    if not h:
         return None, ("Hackathon not found", 404)
-    if check_owner and hackathon.get("organizer_regn") != current_user.regn_no:
+    if check_owner and h.get("organizer_regn") != current_user.regn_no:
         return None, ("Unauthorized", 403)
-    return hackathon, None
+    return h, None
 
-# ============================================================
-#  PUBLIC / AUTH ROUTES
-# ============================================================
-
-@app.route('/')
+# ─────────────────────────────────────────
+# PUBLIC
+# ─────────────────────────────────────────
+@app.route("/")
 def home():
-    hackathons = list(hackathons_collection.find({"status": "open"}))
+    hackathons = list(hackathons_col.find({"status": "open"}))
     for h in hackathons:
         h["_id"] = str(h["_id"])
-    return render_template('index.html', hackathons=hackathons)
+        h["participant_count"] = len(h.get("participants", []))
+    return render_template("index.html", hackathons=hackathons)
 
-# ----- Signup -----
-@app.route('/signup', methods=['GET', 'POST'])
+# ─────────────────────────────────────────
+# AUTH
+# ─────────────────────────────────────────
+@app.route("/signup", methods=["GET", "POST"])
 def signup():
-    message = ""
-    if request.method == 'POST':
-        regn_no    = request.form['regn_no'].strip()
-        password   = request.form['password']
-        first_name = request.form['first_name'].strip()
-        last_name  = request.form['last_name'].strip()
-        email      = request.form['email'].strip().lower()
-        role       = request.form['role']
+    if request.method == "POST":
+        regn_no = request.form["regn_no"].strip()
+        fn      = request.form["first_name"].strip()
+        ln      = request.form["last_name"].strip()
+        email   = request.form["email"].strip().lower()
+        pw      = request.form["password"]
+        role    = request.form.get("role", "participant")
 
-        if users_collection.find_one({'regn_no': regn_no}):
-            message = "User already registered with this registration number."
-            return render_template('signup.html', message=message)
-        if users_collection.find_one({'email': email}):
-            message = "Email already registered!"
-            return render_template('signup.html', message=message)
+        if users_col.find_one({"regn_no": regn_no}):
+            return render_template("signup.html", error="Registration number already used.")
+        if users_col.find_one({"email": email}):
+            return render_template("signup.html", error="Email already registered.")
 
-        hashed_pw   = hash_password(password)
-        otp         = generate_otp()
-        expiry_time = datetime.utcnow() + timedelta(minutes=5)
-
-        users_collection.insert_one({
-            'regn_no':    regn_no,
-            'password':   hashed_pw,
-            'first_name': first_name,
-            'last_name':  last_name,
-            'email':      email,
-            'role':       role,
-            'verified':   False,
-            'otp':        otp,
-            'otp_expiry': expiry_time
+        otp    = gen_otp()
+        expiry = datetime.utcnow() + timedelta(minutes=5)
+        users_col.insert_one({
+            "regn_no": regn_no, "first_name": fn, "last_name": ln,
+            "email": email, "password": hash_pw(pw), "role": role,
+            "verified": False, "otp": otp, "otp_expiry": expiry,
+            "joined_hackathons": [],
         })
+        send_email(email, "Verify your TeamUp account",
+                   f"Hi {fn},\n\nYour verification code: {otp}\nExpires in 5 minutes.\n\n— TeamUp")
+        return redirect(url_for("verify_email", email=email))
+    return render_template("signup.html")
 
-        send_email(
-            recipient_email=email,
-            subject="TeamUp – Verify your account",
-            body=f"Hi {first_name},\n\nYour verification code is: {otp}\nIt will expire in 5 minutes.\n\n— TeamUp."
-        )
-
-        return redirect(url_for('verify_email', email=email))
-
-    return render_template('signup.html', message=message)
-
-# ----- Resend OTP -----
-@app.route('/resend-otp/<email>', methods=['POST'])
+@app.route("/resend-otp/<email>", methods=["POST"])
 def resend_otp(email):
     email = email.strip().lower()
-    user  = users_collection.find_one({'email': email})
-    if not user:
-        return redirect(url_for('signup'))
-    if user.get('verified'):
-        return redirect(url_for('login'))
+    u = users_col.find_one({"email": email})
+    if not u or u.get("verified"):
+        return redirect(url_for("login"))
+    otp    = gen_otp()
+    expiry = datetime.utcnow() + timedelta(minutes=5)
+    users_col.update_one({"_id": u["_id"]}, {"$set": {"otp": otp, "otp_expiry": expiry}})
+    send_email(email, "New verification code",
+               f"Hi {u.get('first_name','')},\n\nYour new code: {otp}\nExpires in 5 minutes.\n\n— TeamUp")
+    return redirect(url_for("verify_email", email=email))
 
-    new_otp    = generate_otp()
-    new_expiry = datetime.utcnow() + timedelta(minutes=5)
-    users_collection.update_one({'_id': user['_id']}, {'$set': {'otp': new_otp, 'otp_expiry': new_expiry}})
-
-    send_email(
-        recipient_email=email,
-        subject="Your new verification code",
-        body=f"Hi {user.get('first_name', '')},\n\nYour new verification code is: {new_otp}\nIt will expire in 5 minutes.\n\n— TeamUp"
-    )
-    return redirect(url_for('verify_email', email=email))
-
-# ----- Verify -----
-@app.route('/verify/<email>', methods=['GET', 'POST'])
+@app.route("/verify/<email>", methods=["GET", "POST"])
 def verify_email(email):
-    email   = email.strip().lower()
-    message = ""
-    if request.method == 'POST':
-        entered_otp = request.form['otp'].strip()
-        user        = users_collection.find_one({'email': email})
+    email = email.strip().lower()
+    if request.method == "POST":
+        entered = request.form["otp"].strip()
+        u = users_col.find_one({"email": email})
+        if not u:
+            return render_template("verify.html", email=email, error="User not found.")
+        if u.get("verified"):
+            return redirect(url_for("login"))
+        if not u.get("otp"):
+            return render_template("verify.html", email=email, error="No active code. Please resend.")
+        if datetime.utcnow() > u["otp_expiry"]:
+            return render_template("verify.html", email=email, error="Code expired. Please resend.")
+        if entered != u["otp"]:
+            return render_template("verify.html", email=email, error="Incorrect code.")
+        users_col.update_one({"_id": u["_id"]},
+                             {"$set": {"verified": True}, "$unset": {"otp": "", "otp_expiry": ""}})
+        return redirect(url_for("login"))
+    return render_template("verify.html", email=email)
 
-        if not user:
-            message = "User not found."
-        elif user.get('verified'):
-            return redirect(url_for('login'))
-        elif not user.get('otp') or not user.get('otp_expiry'):
-            message = "No active OTP. Please resend a code."
-        elif datetime.utcnow() > user['otp_expiry']:
-            message = "OTP expired. Please request a new one."
-        elif entered_otp == user['otp']:
-            users_collection.update_one(
-                {'_id': user['_id']},
-                {'$set': {'verified': True}, '$unset': {'otp': "", 'otp_expiry': ""}}
-            )
-            return redirect(url_for('login'))
-        else:
-            message = "Invalid OTP. Please try again."
-
-    return render_template('verify.html', email=email, message=message)
-
-# ----- Login -----
-@app.route('/login', methods=['GET', 'POST'])
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    message = ""
-    if request.method == 'POST':
-        email    = request.form.get('email', '').strip()
-        password = request.form.get('password', '')
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        pw    = request.form.get("password", "")
+        u     = users_col.find_one({"email": email})
+        if not u or not check_pw(pw, u["password"]):
+            return render_template("login.html", error="Invalid email or password.")
+        if not u.get("verified"):
+            return redirect(url_for("verify_email", email=email))
+        login_user(User(u))
+        return redirect(url_for("organizer_dashboard") if u.get("role") == "organizer"
+                        else url_for("participant_dashboard"))
+    return render_template("login.html")
 
-        if not email or not password:
-            message = "Please fill out both email and password."
-            return render_template('login.html', message=message)
-
-        user_data = users_collection.find_one({'email': email})
-
-        if user_data and check_password(password, user_data['password']):
-            if not user_data.get('verified', False):
-                return redirect(url_for('verify_email', email=email))
-
-            user = User(user_data)
-            login_user(user)
-
-            role = user_data.get('role', 'participant')
-            if role == 'participant':
-                return redirect(url_for('participant_dashboard'))
-            elif role == 'organizer':
-                return redirect(url_for('organizer_dashboard'))
-            else:
-                message = "Invalid user role."
-                logout_user()
-        else:
-            message = "Invalid credentials."
-
-    return render_template('login.html', message=message)
-
-# ----- Logout -----
-@app.route('/logout')
+@app.route("/logout")
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('login'))
+    return redirect(url_for("login"))
 
-# ============================================================
-#  PARTICIPANT ROUTES
-# ============================================================
-
-@app.route('/participant_dashboard')
+# ─────────────────────────────────────────
+# PARTICIPANT
+# ─────────────────────────────────────────
+@app.route("/dashboard")
 @login_required
-@participant_required
+def dashboard():
+    if current_user.role == "organizer":
+        return redirect(url_for("organizer_dashboard"))
+    return redirect(url_for("participant_dashboard"))
+
+@app.route("/participant/dashboard")
+@login_required
+@participant_only
 def participant_dashboard():
-    # Hackathons the participant has joined
-    joined_hackathon_ids = [
-        ObjectId(hid) for hid in
-        users_collection.find_one({"regn_no": current_user.regn_no}).get("joined_hackathons", [])
-    ]
-    my_hackathons = list(hackathons_collection.find({"_id": {"$in": joined_hackathon_ids}}))
+    ud = users_col.find_one({"regn_no": current_user.regn_no})
+    joined_ids = [ObjectId(hid) for hid in ud.get("joined_hackathons", [])]
+
+    my_hackathons = list(hackathons_col.find({"_id": {"$in": joined_ids}}))
     for h in my_hackathons:
         h["_id"] = str(h["_id"])
+        h["team_count"] = teams_col.count_documents({"hackathon_id": str(h["_id"])})
+        mt = teams_col.find_one({"hackathon_id": str(h["_id"]), "users": current_user.regn_no})
+        h["my_team_name"] = mt["team_name"] if mt else None
 
-    # All open hackathons (not yet joined)
-    open_hackathons = list(hackathons_collection.find({"status": "open", "_id": {"$nin": joined_hackathon_ids}}))
+    open_hackathons = list(hackathons_col.find({"status": "open", "_id": {"$nin": joined_ids}}))
     for h in open_hackathons:
         h["_id"] = str(h["_id"])
+        h["participant_count"] = len(h.get("participants", []))
 
-    # Teams the participant is in
-    teams = list(teams_collection.find({"users": current_user.regn_no}))
-    for team in teams:
-        creator = users_collection.find_one({"regn_no": team["created_by"]})
-        team["creator_name"] = f"{creator['first_name']} {creator['last_name']}" if creator else "Unknown"
-        team["_id"] = str(team["_id"])
-        hackathon = hackathons_collection.find_one({"_id": ObjectId(team.get("hackathon_id", ""))}) if team.get("hackathon_id") else None
-        team["hackathon_name"] = hackathon["name"] if hackathon else "—"
+    return render_template("participant_dashboard.html",
+                           my_hackathons=my_hackathons,
+                           open_hackathons=open_hackathons)
 
-    return render_template(
-        "participant_dashboard.html",
-        user=current_user,
-        my_hackathons=my_hackathons,
-        open_hackathons=open_hackathons,
-        teams=teams
-    )
-
-# ----- Join Hackathon -----
-@app.route('/hackathon/join', methods=['GET', 'POST'])
+@app.route("/hackathon/join", methods=["GET", "POST"])
 @login_required
-@participant_required
+@participant_only
 def join_hackathon():
-    message = request.args.get('message', '')
-    if request.method == 'POST':
-        join_code = request.form.get('join_code', '').strip().upper()
-        hackathon = hackathons_collection.find_one({"join_code": join_code})
+    if request.method == "POST":
+        code = request.form.get("join_code", "").strip().upper()
+        h    = hackathons_col.find_one({"join_code": code})
+        if not h:
+            return render_template("join_hackathon.html", error="Invalid join code.")
+        if h.get("status") != "open":
+            return render_template("join_hackathon.html", error="This hackathon is not open.")
+        hid  = str(h["_id"])
+        ud   = users_col.find_one({"regn_no": current_user.regn_no})
+        if hid in ud.get("joined_hackathons", []):
+            return redirect(url_for("hackathon_lobby", hackathon_id=hid))
+        users_col.update_one({"regn_no": current_user.regn_no}, {"$addToSet": {"joined_hackathons": hid}})
+        hackathons_col.update_one({"_id": h["_id"]}, {"$addToSet": {"participants": current_user.regn_no}})
+        return redirect(url_for("hackathon_lobby", hackathon_id=hid))
+    return render_template("join_hackathon.html")
 
-        if not hackathon:
-            return redirect(url_for('join_hackathon', message="Invalid hackathon code."))
-        if hackathon.get("status") != "open":
-            return redirect(url_for('join_hackathon', message="This hackathon is not accepting participants right now."))
-
-        hackathon_id = str(hackathon["_id"])
-        user_doc = users_collection.find_one({"regn_no": current_user.regn_no})
-        if hackathon_id in user_doc.get("joined_hackathons", []):
-            return redirect(url_for('join_hackathon', message="You have already joined this hackathon."))
-
-        users_collection.update_one(
-            {"regn_no": current_user.regn_no},
-            {"$addToSet": {"joined_hackathons": hackathon_id}}
-        )
-        hackathons_collection.update_one(
-            {"_id": hackathon["_id"]},
-            {"$addToSet": {"participants": current_user.regn_no}}
-        )
-        return redirect(url_for('hackathon_lobby', hackathon_id=hackathon_id))
-
-    return render_template('join_hackathon.html', user=current_user, message=message)
-
-# ----- Hackathon Lobby (participant view) -----
-@app.route('/hackathon/<hackathon_id>')
+@app.route("/hackathon/<hackathon_id>")
 @login_required
-@participant_required
+@participant_only
 def hackathon_lobby(hackathon_id):
-    hackathon = hackathons_collection.find_one({"_id": ObjectId(hackathon_id)})
-    if not hackathon:
-        return redirect(url_for('participant_dashboard'))
-
-    user_doc = users_collection.find_one({"regn_no": current_user.regn_no})
-    if hackathon_id not in user_doc.get("joined_hackathons", []):
-        return redirect(url_for('participant_dashboard'))
-
-    # Teams in this hackathon
-    teams = list(teams_collection.find({"hackathon_id": hackathon_id}))
-    for team in teams:
-        team["_id"] = str(team["_id"])
-        team["points"] = team.get("points", 0)
-
+    h, err = fetch_hackathon(hackathon_id)
+    if err: return err
+    ud = users_col.find_one({"regn_no": current_user.regn_no})
+    if hackathon_id not in ud.get("joined_hackathons", []):
+        return redirect(url_for("participant_dashboard"))
+    teams       = [enrich_team(t) for t in teams_col.find({"hackathon_id": hackathon_id})]
     leaderboard = sorted(teams, key=lambda x: x["points"], reverse=True)
+    my_team     = next((t for t in teams if current_user.regn_no in t.get("users", [])), None)
+    h["_id"]    = str(h["_id"])
+    return render_template("hackathon_lobby.html", hackathon=h, leaderboard=leaderboard, my_team=my_team)
 
-    # Team the participant belongs to (in this hackathon)
-    my_team = teams_collection.find_one({"hackathon_id": hackathon_id, "users": current_user.regn_no})
-    if my_team:
-        my_team["_id"] = str(my_team["_id"])
-
-    hackathon["_id"] = str(hackathon["_id"])
-    return render_template(
-        'hackathon_lobby.html',
-        user=current_user,
-        hackathon=hackathon,
-        leaderboard=leaderboard,
-        my_team=my_team
-    )
-
-# ----- Create Team (within a hackathon) -----
-@app.route('/hackathon/<hackathon_id>/create_team', methods=['GET', 'POST'])
+@app.route("/hackathon/<hackathon_id>/leave", methods=["POST"])
 @login_required
-@participant_required
+@participant_only
+def leave_hackathon(hackathon_id):
+    mt = teams_col.find_one({"hackathon_id": hackathon_id, "users": current_user.regn_no})
+    if mt:
+        teams_col.update_one({"_id": mt["_id"]}, {"$pull": {"users": current_user.regn_no}})
+    users_col.update_one({"regn_no": current_user.regn_no}, {"$pull": {"joined_hackathons": hackathon_id}})
+    hackathons_col.update_one({"_id": ObjectId(hackathon_id)}, {"$pull": {"participants": current_user.regn_no}})
+    return redirect(url_for("participant_dashboard"))
+
+@app.route("/hackathon/<hackathon_id>/create-team", methods=["GET", "POST"])
+@login_required
+@participant_only
 def create_team(hackathon_id):
-    hackathon = hackathons_collection.find_one({"_id": ObjectId(hackathon_id)})
-    if not hackathon:
-        return redirect(url_for('participant_dashboard'))
-    if hackathon.get("teams_locked"):
-        flash("Team registration is currently locked by the organizer.", "error")
-        return redirect(url_for('hackathon_lobby', hackathon_id=hackathon_id))
+    h, err = fetch_hackathon(hackathon_id)
+    if err: return err
+    if h.get("teams_locked"):
+        return redirect(url_for("hackathon_lobby", hackathon_id=hackathon_id))
+    ud = users_col.find_one({"regn_no": current_user.regn_no})
+    if hackathon_id not in ud.get("joined_hackathons", []):
+        return redirect(url_for("participant_dashboard"))
+    if teams_col.find_one({"hackathon_id": hackathon_id, "users": current_user.regn_no}):
+        return redirect(url_for("hackathon_lobby", hackathon_id=hackathon_id))
 
-    # Participant must have joined this hackathon
-    user_doc = users_collection.find_one({"regn_no": current_user.regn_no})
-    if hackathon_id not in user_doc.get("joined_hackathons", []):
-        return redirect(url_for('participant_dashboard'))
+    if request.method == "POST":
+        name = request.form["team_name"].strip()
+        desc = request.form.get("description", "").strip()
+        gh   = request.form.get("github_repo", "").strip()
+        if teams_col.find_one({"hackathon_id": hackathon_id, "team_name": name}):
+            h["_id"] = str(h["_id"])
+            return render_template("create_team.html", hackathon=h, error="Team name already taken.")
+        code = gen_code(6, teams_col, "code")
+        n    = now_ist()
+        teams_col.insert_one({
+            "hackathon_id": hackathon_id, "team_name": name, "description": desc,
+            "code": code, "created_by": current_user.regn_no,
+            "date": n.date().isoformat(), "time": n.time().isoformat(timespec="seconds"),
+            "users": [current_user.regn_no], "github_repo": gh, "points": 0, "files": [],
+        })
+        return redirect(url_for("hackathon_lobby", hackathon_id=hackathon_id))
 
-    # Check if user already has a team in this hackathon
-    existing = teams_collection.find_one({"hackathon_id": hackathon_id, "users": current_user.regn_no})
-    if existing:
-        flash("You are already in a team for this hackathon.", "error")
-        return redirect(url_for('hackathon_lobby', hackathon_id=hackathon_id))
+    h["_id"] = str(h["_id"])
+    return render_template("create_team.html", hackathon=h)
 
-    message = ""
-    if request.method == 'POST':
-        team_name   = request.form['team_name'].strip()
-        description = request.form['description'].strip()
-        github_repo = request.form.get('github_repo', '').strip()
-
-        if teams_collection.find_one({"hackathon_id": hackathon_id, "team_name": team_name}):
-            message = "Team name already exists in this hackathon. Choose a different one."
-            return render_template('create_team.html', user=current_user, hackathon=hackathon, message=message)
-
-        code     = generate_unique_code()
-        now_ist  = datetime.now(IST)
-
-        team_doc = {
-            "hackathon_id":  hackathon_id,
-            "team_name":     team_name,
-            "description":   description,
-            "code":          code,
-            "created_by":    current_user.regn_no,
-            "date":          now_ist.date().isoformat(),
-            "time":          now_ist.time().isoformat(timespec="seconds"),
-            "users":         [current_user.regn_no],
-            "github_repo":   github_repo,
-            "points":        0
-        }
-        teams_collection.insert_one(team_doc)
-        return redirect(url_for('hackathon_lobby', hackathon_id=hackathon_id))
-
-    hackathon["_id"] = str(hackathon["_id"])
-    return render_template('create_team.html', user=current_user, hackathon=hackathon, message=message)
-
-# ----- Join Team (within a hackathon) -----
-@app.route('/hackathon/<hackathon_id>/join_team', methods=['GET', 'POST'])
+@app.route("/hackathon/<hackathon_id>/join-team", methods=["GET", "POST"])
 @login_required
-@participant_required
+@participant_only
 def join_team(hackathon_id):
-    hackathon = hackathons_collection.find_one({"_id": ObjectId(hackathon_id)})
-    if not hackathon:
-        return redirect(url_for('participant_dashboard'))
-    if hackathon.get("teams_locked"):
-        flash("Team registration is currently locked by the organizer.", "error")
-        return redirect(url_for('hackathon_lobby', hackathon_id=hackathon_id))
+    h, err = fetch_hackathon(hackathon_id)
+    if err: return err
+    if h.get("teams_locked"):
+        return redirect(url_for("hackathon_lobby", hackathon_id=hackathon_id))
+    ud = users_col.find_one({"regn_no": current_user.regn_no})
+    if hackathon_id not in ud.get("joined_hackathons", []):
+        return redirect(url_for("participant_dashboard"))
+    if teams_col.find_one({"hackathon_id": hackathon_id, "users": current_user.regn_no}):
+        return redirect(url_for("hackathon_lobby", hackathon_id=hackathon_id))
 
-    user_doc = users_collection.find_one({"regn_no": current_user.regn_no})
-    if hackathon_id not in user_doc.get("joined_hackathons", []):
-        return redirect(url_for('participant_dashboard'))
-
-    existing = teams_collection.find_one({"hackathon_id": hackathon_id, "users": current_user.regn_no})
-    if existing:
-        flash("You are already in a team for this hackathon.", "error")
-        return redirect(url_for('hackathon_lobby', hackathon_id=hackathon_id))
-
-    message = request.args.get('message', '')
-    if request.method == 'POST':
-        code = request.form.get('code', '').strip().upper()
-        team = teams_collection.find_one({"hackathon_id": hackathon_id, "code": code})
-
+    if request.method == "POST":
+        code = request.form.get("code", "").strip().upper()
+        team = teams_col.find_one({"hackathon_id": hackathon_id, "code": code})
         if not team:
-            return redirect(url_for('join_team', hackathon_id=hackathon_id, message="Invalid team code."))
-        if current_user.regn_no in team['users']:
-            return redirect(url_for('join_team', hackathon_id=hackathon_id, message="You are already in this team."))
+            h["_id"] = str(h["_id"])
+            return render_template("join_team.html", hackathon=h, error="Invalid team code.")
+        max_sz = h.get("max_team_size", 0)
+        if max_sz and len(team["users"]) >= max_sz:
+            h["_id"] = str(h["_id"])
+            return render_template("join_team.html", hackathon=h, error=f"Team full (max {max_sz} members).")
+        teams_col.update_one({"_id": team["_id"]}, {"$addToSet": {"users": current_user.regn_no}})
+        return redirect(url_for("hackathon_lobby", hackathon_id=hackathon_id))
 
-        max_size = hackathon.get("max_team_size", 0)
-        if max_size and len(team['users']) >= max_size:
-            return redirect(url_for('join_team', hackathon_id=hackathon_id, message=f"Team is full (max {max_size} members)."))
+    h["_id"] = str(h["_id"])
+    return render_template("join_team.html", hackathon=h)
 
-        teams_collection.update_one({"_id": team['_id']}, {"$addToSet": {"users": current_user.regn_no}})
-        return redirect(url_for('hackathon_lobby', hackathon_id=hackathon_id))
-
-    hackathon["_id"] = str(hackathon["_id"])
-    return render_template('join_team.html', user=current_user, hackathon=hackathon, message=message)
-
-# ----- Team Detail (participant view) -----
-@app.route('/team/<team_id>', methods=['GET', 'POST'])
+# ─────────────────────────────────────────
+# TEAM (shared)
+# ─────────────────────────────────────────
+@app.route("/team/<team_id>", methods=["GET", "POST"])
 @login_required
-def team(team_id):
-    team = teams_collection.find_one({"_id": ObjectId(team_id)})
-    if not team:
-        return redirect(url_for('participant_dashboard'))
+def team_detail(team_id):
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team: return redirect(url_for("dashboard"))
 
-    hackathon    = hackathons_collection.find_one({"_id": ObjectId(team["hackathon_id"])}) if team.get("hackathon_id") else None
-    hackathon_id = team.get("hackathon_id", "")
-    message      = request.args.get("message", "")
-
-    # Only members (or organizer of the hackathon) can view
-    is_organizer = (
-        current_user.role == 'organizer' and
-        hackathon and hackathon.get("organizer_regn") == current_user.regn_no
-    )
-    is_member = current_user.regn_no in team.get('users', [])
+    hid = team.get("hackathon_id", "")
+    hackathon = hackathons_col.find_one({"_id": ObjectId(hid)}) if hid else None
+    is_organizer = hackathon and hackathon.get("organizer_regn") == current_user.regn_no and current_user.role == "organizer"
+    is_member    = current_user.regn_no in team.get("users", [])
     if not is_member and not is_organizer:
         return "Unauthorized", 403
 
-    if request.method == 'POST':
-        file = request.files.get('file')
-        if not file:
-            message = "No file provided."
-        elif not allowed_file(file.filename):
-            message = "Invalid file type."
-        else:
-            content = file.read()
-            if len(content) > MAX_FILE_SIZE:
-                message = "File too large. Max 2 MB."
-            else:
-                file.seek(0)
-                filename = secure_filename(file.filename)
-                fs.put(file, filename=filename, team_id=team_id,
-                       team_name=team["team_name"], uploaded_by=current_user.regn_no)
-                message = "File uploaded successfully."
-        return redirect(url_for('team', team_id=team_id, message=message))
+    error = request.args.get("error", "")
+    success = request.args.get("success", "")
 
-    # Fetch files
-    files = []
-    for f in fs.find({"team_id": team_id}):
-        uploader      = users_collection.find_one({"regn_no": f.uploaded_by})
-        uploader_name = f"{uploader.get('first_name','')} {uploader.get('last_name','')}" if uploader else f.uploaded_by
-        files.append({"id": str(f._id), "filename": f.filename, "uploaded_by": uploader_name})
+    if request.method == "POST":
+        file = request.files.get("file")
+        if not file or file.filename == "":
+            return redirect(url_for("team_detail", team_id=team_id, error="No file selected."))
+        if not allowed_file(file.filename):
+            return redirect(url_for("team_detail", team_id=team_id, error="Invalid file type. Allowed: PDF, DOCX, PPT, PPTX."))
+        content = file.read()
+        if len(content) > MAX_FILE_SIZE:
+            return redirect(url_for("team_detail", team_id=team_id, error="File exceeds 2 MB limit."))
+        file.seek(0)
+        filename = secure_filename(file.filename)
+        key      = make_s3_key(team_id, filename)
+        s3_upload(file, key, filename)
+        file_doc = {
+            "file_id":     str(uuid.uuid4()),
+            "filename":    filename,
+            "s3_key":      key,
+            "uploaded_by": current_user.regn_no,
+            "uploaded_at": now_ist().isoformat(),
+        }
+        teams_col.update_one({"_id": ObjectId(team_id)}, {"$push": {"files": file_doc}})
+        return redirect(url_for("team_detail", team_id=team_id, success=f"'{filename}' uploaded."))
 
-    creator = users_collection.find_one({"regn_no": team['created_by']})
-    created_by_name = f"{creator.get('first_name', '')} {creator.get('last_name', '')}" if creator else team['created_by']
-
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
     members = []
-    for regn_no in team.get('users', []):
-        u = users_collection.find_one({"regn_no": regn_no})
+    for rno in team.get("users", []):
+        u = users_col.find_one({"regn_no": rno})
         members.append({
-            "regn_no": regn_no,
-            "name": f"{u.get('first_name','')} {u.get('last_name','')}" if u else regn_no
+            "regn_no":    rno,
+            "name":       f"{u.get('first_name','')} {u.get('last_name','')}" if u else rno,
+            "is_creator": rno == team["created_by"],
         })
+    creator_doc = users_col.find_one({"regn_no": team["created_by"]})
+    created_by_name = f"{creator_doc.get('first_name','')} {creator_doc.get('last_name','')}" if creator_doc else team["created_by"]
+    if hackathon: hackathon["_id"] = str(hackathon["_id"])
 
-    if hackathon:
-        hackathon["_id"] = str(hackathon["_id"])
+    return render_template("team.html",
+                           team=team, hackathon=hackathon,
+                           members=members, created_by_name=created_by_name,
+                           is_organizer=is_organizer,
+                           error=error, success=success)
 
-    return render_template(
-        'team.html',
-        team=team,
-        hackathon=hackathon,
-        created_by_name=created_by_name,
-        members=members,
-        files=files,
-        message=message,
-        user=current_user,
-        is_organizer=is_organizer
-    )
-
-# ----- Leave Team -----
-@app.route('/team/<team_id>/leave', methods=['POST'])
-@login_required
-@participant_required
-def leave_team(team_id):
-    team = teams_collection.find_one({"_id": ObjectId(team_id)})
-    if not team:
-        return redirect(url_for('participant_dashboard'))
-    hackathon_id = team.get("hackathon_id", "")
-    if current_user.regn_no in team.get('users', []):
-        teams_collection.update_one({"_id": ObjectId(team_id)}, {"$pull": {"users": current_user.regn_no}})
-    return redirect(url_for('hackathon_lobby', hackathon_id=hackathon_id))
-
-# ----- Remove Member (creator only) -----
-@app.route('/team/<team_id>/remove/<regn_no>', methods=['POST'])
-@login_required
-def remove_member(team_id, regn_no):
-    team = teams_collection.find_one({"_id": ObjectId(team_id)})
-    if not team:
-        return redirect(url_for('participant_dashboard'))
-    if current_user.regn_no == team['created_by'] or current_user.role == 'organizer':
-        teams_collection.update_one({"_id": ObjectId(team_id)}, {"$pull": {"users": regn_no}})
-    return redirect(url_for('team', team_id=team_id))
-
-# ----- Delete Team (creator only) -----
-@app.route('/team/<team_id>/delete', methods=['POST'])
-@login_required
-def delete_team(team_id):
-    team = teams_collection.find_one({"_id": ObjectId(team_id)})
-    if not team:
-        return redirect(url_for('participant_dashboard'))
-
-    hackathon_id = team.get("hackathon_id", "")
-    hackathon    = hackathons_collection.find_one({"_id": ObjectId(hackathon_id)}) if hackathon_id else None
-    is_organizer = (
-        current_user.role == 'organizer' and
-        hackathon and hackathon.get("organizer_regn") == current_user.regn_no
-    )
-
-    if current_user.regn_no != team['created_by'] and not is_organizer:
-        return "Unauthorized", 403
-
-    for f in fs.find({"team_id": team_id}):
-        fs.delete(f._id)
-    teams_collection.delete_one({"_id": ObjectId(team_id)})
-
-    if is_organizer and hackathon_id:
-        return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id))
-    return redirect(url_for('hackathon_lobby', hackathon_id=hackathon_id))
-
-# ----- Download File -----
-@app.route('/team/<team_id>/file/<file_id>')
+@app.route("/team/<team_id>/file/<file_id>/download")
 @login_required
 def download_file(team_id, file_id):
-    f = fs.get(ObjectId(file_id))
-    return send_file(BytesIO(f.read()), download_name=f.filename, as_attachment=True)
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team: return "Not found", 404
+    hid = team.get("hackathon_id", "")
+    hackathon = hackathons_col.find_one({"_id": ObjectId(hid)}) if hid else None
+    is_organizer = hackathon and hackathon.get("organizer_regn") == current_user.regn_no
+    if current_user.regn_no not in team.get("users", []) and not is_organizer:
+        return "Unauthorized", 403
+    fd = next((f for f in team.get("files", []) if f["file_id"] == file_id), None)
+    if not fd: return "File not found", 404
+    return redirect(s3_presign(fd["s3_key"]))
 
-# ----- Delete File -----
-@app.route('/team/<team_id>/file/<file_id>/delete', methods=['POST'])
+@app.route("/team/<team_id>/file/<file_id>/delete", methods=["POST"])
 @login_required
 def delete_file(team_id, file_id):
-    team = teams_collection.find_one({"_id": ObjectId(team_id)})
-    if not team:
-        return "Team not found", 404
-
-    hackathon_id = team.get("hackathon_id", "")
-    hackathon    = hackathons_collection.find_one({"_id": ObjectId(hackathon_id)}) if hackathon_id else None
-    is_organizer = (
-        current_user.role == 'organizer' and
-        hackathon and hackathon.get("organizer_regn") == current_user.regn_no
-    )
-
-    if current_user.regn_no not in team.get('users', []) and not is_organizer:
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team: return "Not found", 404
+    hid = team.get("hackathon_id", "")
+    hackathon = hackathons_col.find_one({"_id": ObjectId(hid)}) if hid else None
+    is_organizer = hackathon and hackathon.get("organizer_regn") == current_user.regn_no
+    if current_user.regn_no not in team.get("users", []) and not is_organizer:
         return "Unauthorized", 403
+    fd = next((f for f in team.get("files", []) if f["file_id"] == file_id), None)
+    if fd:
+        s3_delete(fd["s3_key"])
+        teams_col.update_one({"_id": ObjectId(team_id)}, {"$pull": {"files": {"file_id": file_id}}})
+    return redirect(url_for("team_detail", team_id=team_id, success="File deleted."))
 
-    f = fs.get(ObjectId(file_id))
-    fs.delete(f._id)
-    return redirect(url_for('team', team_id=team_id))
-
-# ----- Leave Hackathon -----
-@app.route('/hackathon/<hackathon_id>/leave', methods=['POST'])
+@app.route("/team/<team_id>/leave", methods=["POST"])
 @login_required
-@participant_required
-def leave_hackathon(hackathon_id):
-    # Remove from any team in this hackathon
-    my_team = teams_collection.find_one({"hackathon_id": hackathon_id, "users": current_user.regn_no})
-    if my_team:
-        teams_collection.update_one({"_id": my_team["_id"]}, {"$pull": {"users": current_user.regn_no}})
+@participant_only
+def leave_team(team_id):
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team: return redirect(url_for("participant_dashboard"))
+    hid = team.get("hackathon_id", "")
+    teams_col.update_one({"_id": ObjectId(team_id)}, {"$pull": {"users": current_user.regn_no}})
+    return redirect(url_for("hackathon_lobby", hackathon_id=hid))
 
-    users_collection.update_one(
-        {"regn_no": current_user.regn_no},
-        {"$pull": {"joined_hackathons": hackathon_id}}
-    )
-    hackathons_collection.update_one(
-        {"_id": ObjectId(hackathon_id)},
-        {"$pull": {"participants": current_user.regn_no}}
-    )
-    return redirect(url_for('participant_dashboard'))
-
-# ============================================================
-#  ORGANIZER ROUTES
-# ============================================================
-
-@app.route('/organizer_dashboard')
+@app.route("/team/<team_id>/remove/<regn_no>", methods=["POST"])
 @login_required
-@organizer_required
+def remove_member(team_id, regn_no):
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team: return redirect(url_for("dashboard"))
+    hid = team.get("hackathon_id", "")
+    hackathon = hackathons_col.find_one({"_id": ObjectId(hid)}) if hid else None
+    is_organizer = hackathon and hackathon.get("organizer_regn") == current_user.regn_no
+    if current_user.regn_no == team["created_by"] or is_organizer:
+        teams_col.update_one({"_id": ObjectId(team_id)}, {"$pull": {"users": regn_no}})
+    return redirect(url_for("team_detail", team_id=team_id))
+
+@app.route("/team/<team_id>/delete", methods=["POST"])
+@login_required
+def delete_team(team_id):
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team: return redirect(url_for("dashboard"))
+    hid = team.get("hackathon_id", "")
+    hackathon = hackathons_col.find_one({"_id": ObjectId(hid)}) if hid else None
+    is_organizer = hackathon and hackathon.get("organizer_regn") == current_user.regn_no
+    if current_user.regn_no != team["created_by"] and not is_organizer:
+        return "Unauthorized", 403
+    for f in team.get("files", []):
+        s3_delete(f["s3_key"])
+    teams_col.delete_one({"_id": ObjectId(team_id)})
+    if is_organizer:
+        return redirect(url_for("organizer_hackathon_detail", hackathon_id=hid))
+    return redirect(url_for("hackathon_lobby", hackathon_id=hid))
+
+# ─────────────────────────────────────────
+# ORGANIZER
+# ─────────────────────────────────────────
+@app.route("/organizer/dashboard")
+@login_required
+@organizer_only
 def organizer_dashboard():
-    hackathons = list(hackathons_collection.find({"organizer_regn": current_user.regn_no}))
+    hackathons = list(hackathons_col.find({"organizer_regn": current_user.regn_no}))
     for h in hackathons:
-        h["_id"]           = str(h["_id"])
-        h["team_count"]    = teams_collection.count_documents({"hackathon_id": str(h["_id"])})
+        h["_id"]               = str(h["_id"])
         h["participant_count"] = len(h.get("participants", []))
-    return render_template('organizer_dashboard.html', user=current_user, hackathons=hackathons)
+        h["team_count"]        = teams_col.count_documents({"hackathon_id": str(h["_id"])})
+    return render_template("organizer_dashboard.html", hackathons=hackathons)
 
-# ----- Create Hackathon -----
-@app.route('/organizer/hackathon/create', methods=['GET', 'POST'])
+@app.route("/organizer/hackathon/create", methods=["GET", "POST"])
 @login_required
-@organizer_required
+@organizer_only
 def create_hackathon():
-    message = ""
-    if request.method == 'POST':
-        name          = request.form['name'].strip()
-        description   = request.form['description'].strip()
-        start_date    = request.form.get('start_date', '').strip()
-        end_date      = request.form.get('end_date', '').strip()
-        max_team_size = int(request.form.get('max_team_size', 0))
-        status        = request.form.get('status', 'draft')  # draft | open | closed
-
-        if hackathons_collection.find_one({"name": name, "organizer_regn": current_user.regn_no}):
-            message = "You already have a hackathon with this name."
-            return render_template('create_hackathon.html', user=current_user, message=message)
-
-        join_code = generate_hackathon_code()
-        now_ist   = datetime.now(IST)
-
-        hackathon_doc = {
-            "name":           name,
-            "description":    description,
+    if request.method == "POST":
+        name   = request.form["name"].strip()
+        desc   = request.form.get("description", "").strip()
+        start  = request.form.get("start_date", "")
+        end    = request.form.get("end_date", "")
+        max_sz = int(request.form.get("max_team_size", 0))
+        status = request.form.get("status", "draft")
+        if hackathons_col.find_one({"name": name, "organizer_regn": current_user.regn_no}):
+            return render_template("create_hackathon.html", error="You already have a hackathon with this name.")
+        jc = gen_code(8, hackathons_col, "join_code")
+        hackathons_col.insert_one({
+            "name": name, "description": desc,
             "organizer_regn": current_user.regn_no,
-            "organizer_name": f"{current_user.first_name} {current_user.last_name}",
-            "join_code":      join_code,
-            "start_date":     start_date,
-            "end_date":       end_date,
-            "max_team_size":  max_team_size,
-            "status":         status,
-            "teams_locked":   False,
-            "participants":   [],
-            "created_at":     now_ist.isoformat()
-        }
-        hackathons_collection.insert_one(hackathon_doc)
-        return redirect(url_for('organizer_dashboard'))
+            "organizer_name": current_user.full_name,
+            "join_code": jc, "start_date": start, "end_date": end,
+            "max_team_size": max_sz, "status": status,
+            "teams_locked": False, "participants": [],
+            "created_at": now_ist().isoformat(),
+        })
+        return redirect(url_for("organizer_dashboard"))
+    return render_template("create_hackathon.html")
 
-    return render_template('create_hackathon.html', user=current_user, message=message)
-
-# ----- Hackathon Detail (organizer view) -----
-@app.route('/organizer/hackathon/<hackathon_id>', methods=['GET'])
+@app.route("/organizer/hackathon/<hackathon_id>")
 @login_required
-@organizer_required
+@organizer_only
 def organizer_hackathon_detail(hackathon_id):
-    hackathon, err = get_hackathon_or_403(hackathon_id, check_owner=True)
-    if err:
-        return err
-
-    teams = list(teams_collection.find({"hackathon_id": hackathon_id}))
-    for team in teams:
-        team["_id"]    = str(team["_id"])
-        team["points"] = team.get("points", 0)
-
-        # Enrich members
-        member_names = []
-        for regn_no in team.get("users", []):
-            u = users_collection.find_one({"regn_no": regn_no})
-            member_names.append(f"{u.get('first_name','')} {u.get('last_name','')}" if u else regn_no)
-        team["member_names"] = member_names
-
-        # Files
-        team_files = []
-        for f in fs.find({"team_id": str(team["_id"])}):
-            team_files.append({"_id": str(f._id), "filename": f.filename})
-        team["files"] = team_files
-
-    participants = []
-    for regn_no in hackathon.get("participants", []):
-        u = users_collection.find_one({"regn_no": regn_no})
-        if u:
-            team_of_user = teams_collection.find_one({"hackathon_id": hackathon_id, "users": regn_no})
-            participants.append({
-                "regn_no":   regn_no,
-                "name":      f"{u.get('first_name','')} {u.get('last_name','')}",
-                "email":     u.get('email',''),
-                "team_name": team_of_user["team_name"] if team_of_user else "No Team"
-            })
-
+    h, err = fetch_hackathon(hackathon_id, check_owner=True)
+    if err: return err
+    teams       = [enrich_team(t) for t in teams_col.find({"hackathon_id": hackathon_id})]
     leaderboard = sorted(teams, key=lambda x: x["points"], reverse=True)
+    participants = []
+    for rno in h.get("participants", []):
+        u = users_col.find_one({"regn_no": rno})
+        if u:
+            t = teams_col.find_one({"hackathon_id": hackathon_id, "users": rno})
+            participants.append({
+                "regn_no":   rno,
+                "name":      f"{u.get('first_name','')} {u.get('last_name','')}",
+                "email":     u.get("email", ""),
+                "team_name": t["team_name"] if t else None,
+            })
+    h["_id"] = str(h["_id"])
+    message  = request.args.get("message", "")
+    return render_template("organizer_hackathon_detail.html",
+                           hackathon=h, teams=teams, participants=participants,
+                           leaderboard=leaderboard, message=message)
 
-    hackathon["_id"] = str(hackathon["_id"])
-    message = request.args.get('message', '')
-    return render_template(
-        'organizer_hackathon_detail.html',
-        user=current_user,
-        hackathon=hackathon,
-        teams=teams,
-        participants=participants,
-        leaderboard=leaderboard,
-        message=message
-    )
-
-# ----- Edit Hackathon -----
-@app.route('/organizer/hackathon/<hackathon_id>/edit', methods=['GET', 'POST'])
+@app.route("/organizer/hackathon/<hackathon_id>/edit", methods=["GET", "POST"])
 @login_required
-@organizer_required
+@organizer_only
 def edit_hackathon(hackathon_id):
-    hackathon, err = get_hackathon_or_403(hackathon_id, check_owner=True)
-    if err:
-        return err
+    h, err = fetch_hackathon(hackathon_id, check_owner=True)
+    if err: return err
+    if request.method == "POST":
+        hackathons_col.update_one({"_id": ObjectId(hackathon_id)}, {"$set": {
+            "name":          request.form["name"].strip(),
+            "description":   request.form.get("description", "").strip(),
+            "start_date":    request.form.get("start_date", ""),
+            "end_date":      request.form.get("end_date", ""),
+            "max_team_size": int(request.form.get("max_team_size", 0)),
+            "status":        request.form.get("status", h["status"]),
+        }})
+        return redirect(url_for("organizer_hackathon_detail", hackathon_id=hackathon_id))
+    h["_id"] = str(h["_id"])
+    return render_template("edit_hackathon.html", hackathon=h)
 
-    message = ""
-    if request.method == 'POST':
-        update = {
-            "name":          request.form['name'].strip(),
-            "description":   request.form['description'].strip(),
-            "start_date":    request.form.get('start_date', '').strip(),
-            "end_date":      request.form.get('end_date', '').strip(),
-            "max_team_size": int(request.form.get('max_team_size', 0)),
-            "status":        request.form.get('status', hackathon.get('status', 'draft')),
-        }
-        hackathons_collection.update_one({"_id": ObjectId(hackathon_id)}, {"$set": update})
-        return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id))
-
-    hackathon["_id"] = str(hackathon["_id"])
-    return render_template('edit_hackathon.html', user=current_user, hackathon=hackathon, message=message)
-
-# ----- Update Hackathon Status -----
-@app.route('/organizer/hackathon/<hackathon_id>/status', methods=['POST'])
+@app.route("/organizer/hackathon/<hackathon_id>/status", methods=["POST"])
 @login_required
-@organizer_required
+@organizer_only
 def update_hackathon_status(hackathon_id):
-    hackathon, err = get_hackathon_or_403(hackathon_id, check_owner=True)
-    if err:
-        return err
-    new_status = request.form.get('status', 'draft')
-    hackathons_collection.update_one({"_id": ObjectId(hackathon_id)}, {"$set": {"status": new_status}})
-    return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id,
-                            message=f"Status updated to '{new_status}'."))
+    h, err = fetch_hackathon(hackathon_id, check_owner=True)
+    if err: return err
+    hackathons_col.update_one({"_id": ObjectId(hackathon_id)},
+                               {"$set": {"status": request.form.get("status", "draft")}})
+    return redirect(url_for("organizer_hackathon_detail", hackathon_id=hackathon_id))
 
-# ----- Toggle Team Lock -----
-@app.route('/organizer/hackathon/<hackathon_id>/toggle_lock', methods=['POST'])
+@app.route("/organizer/hackathon/<hackathon_id>/toggle-lock", methods=["POST"])
 @login_required
-@organizer_required
+@organizer_only
 def toggle_team_lock(hackathon_id):
-    hackathon, err = get_hackathon_or_403(hackathon_id, check_owner=True)
-    if err:
-        return err
-    current_lock = hackathon.get("teams_locked", False)
-    hackathons_collection.update_one(
-        {"_id": ObjectId(hackathon_id)},
-        {"$set": {"teams_locked": not current_lock}}
-    )
-    state = "locked" if not current_lock else "unlocked"
-    return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id,
-                            message=f"Team registration {state}."))
+    h, err = fetch_hackathon(hackathon_id, check_owner=True)
+    if err: return err
+    hackathons_col.update_one({"_id": ObjectId(hackathon_id)},
+                               {"$set": {"teams_locked": not h.get("teams_locked", False)}})
+    return redirect(url_for("organizer_hackathon_detail", hackathon_id=hackathon_id))
 
-# ----- Delete Hackathon -----
-@app.route('/organizer/hackathon/<hackathon_id>/delete', methods=['POST'])
+@app.route("/organizer/hackathon/<hackathon_id>/delete", methods=["POST"])
 @login_required
-@organizer_required
+@organizer_only
 def delete_hackathon(hackathon_id):
-    hackathon, err = get_hackathon_or_403(hackathon_id, check_owner=True)
-    if err:
-        return err
+    h, err = fetch_hackathon(hackathon_id, check_owner=True)
+    if err: return err
+    for team in teams_col.find({"hackathon_id": hackathon_id}):
+        for f in team.get("files", []):
+            s3_delete(f["s3_key"])
+    teams_col.delete_many({"hackathon_id": hackathon_id})
+    for rno in h.get("participants", []):
+        users_col.update_one({"regn_no": rno}, {"$pull": {"joined_hackathons": hackathon_id}})
+    hackathons_col.delete_one({"_id": ObjectId(hackathon_id)})
+    return redirect(url_for("organizer_dashboard"))
 
-    # Delete all files of all teams in this hackathon
-    for team in teams_collection.find({"hackathon_id": hackathon_id}):
-        for f in fs.find({"team_id": str(team["_id"])}):
-            fs.delete(f._id)
-    teams_collection.delete_many({"hackathon_id": hackathon_id})
-
-    # Remove this hackathon from participants' joined list
-    for regn_no in hackathon.get("participants", []):
-        users_collection.update_one(
-            {"regn_no": regn_no},
-            {"$pull": {"joined_hackathons": hackathon_id}}
-        )
-
-    hackathons_collection.delete_one({"_id": ObjectId(hackathon_id)})
-    return redirect(url_for('organizer_dashboard'))
-
-# ----- Remove Participant -----
-@app.route('/organizer/hackathon/<hackathon_id>/remove_participant/<regn_no>', methods=['POST'])
+@app.route("/organizer/hackathon/<hackathon_id>/remove-participant/<regn_no>", methods=["POST"])
 @login_required
-@organizer_required
+@organizer_only
 def remove_participant(hackathon_id, regn_no):
-    hackathon, err = get_hackathon_or_403(hackathon_id, check_owner=True)
-    if err:
-        return err
+    h, err = fetch_hackathon(hackathon_id, check_owner=True)
+    if err: return err
+    hackathons_col.update_one({"_id": ObjectId(hackathon_id)}, {"$pull": {"participants": regn_no}})
+    users_col.update_one({"regn_no": regn_no}, {"$pull": {"joined_hackathons": hackathon_id}})
+    teams_col.update_many({"hackathon_id": hackathon_id}, {"$pull": {"users": regn_no}})
+    return redirect(url_for("organizer_hackathon_detail", hackathon_id=hackathon_id, message="Participant removed."))
 
-    hackathons_collection.update_one({"_id": ObjectId(hackathon_id)}, {"$pull": {"participants": regn_no}})
-    users_collection.update_one({"regn_no": regn_no}, {"$pull": {"joined_hackathons": hackathon_id}})
-    # Remove from team
-    teams_collection.update_many({"hackathon_id": hackathon_id}, {"$pull": {"users": regn_no}})
-    return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id,
-                            message="Participant removed."))
-
-# ----- Update Team Points (organizer) -----
-@app.route('/organizer/hackathon/<hackathon_id>/team/<team_id>/update_points', methods=['POST'])
+@app.route("/organizer/hackathon/<hackathon_id>/team/<team_id>/points", methods=["POST"])
 @login_required
-@organizer_required
-def organizer_update_points(hackathon_id, team_id):
-    hackathon, err = get_hackathon_or_403(hackathon_id, check_owner=True)
-    if err:
-        return err
+@organizer_only
+def update_points(hackathon_id, team_id):
+    h, err = fetch_hackathon(hackathon_id, check_owner=True)
+    if err: return err
     try:
-        new_points = int(request.form.get('points', 0))
-        teams_collection.update_one({"_id": ObjectId(team_id)}, {"$set": {"points": new_points}})
-        message = "Points updated."
+        teams_col.update_one({"_id": ObjectId(team_id)},
+                              {"$set": {"points": int(request.form.get("points", 0))}})
+        msg = "Points updated."
     except Exception:
-        message = "Error updating points."
-    return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id, message=message))
+        msg = "Failed to update points."
+    return redirect(url_for("organizer_hackathon_detail", hackathon_id=hackathon_id, message=msg))
 
-# ----- Organizer Upload File to Team -----
-@app.route('/organizer/hackathon/<hackathon_id>/team/<team_id>/upload', methods=['POST'])
+@app.route("/organizer/hackathon/<hackathon_id>/team/<team_id>/upload", methods=["POST"])
 @login_required
-@organizer_required
+@organizer_only
 def organizer_upload_file(hackathon_id, team_id):
-    hackathon, err = get_hackathon_or_403(hackathon_id, check_owner=True)
-    if err:
-        return err
-    team = teams_collection.find_one({"_id": ObjectId(team_id)})
+    h, err = fetch_hackathon(hackathon_id, check_owner=True)
+    if err: return err
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
     if not team:
-        return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id, message="Team not found."))
-
-    file = request.files.get('file')
-    if not file:
-        return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id, message="No file."))
-    if not allowed_file(file.filename):
-        return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id, message="Invalid file type."))
-
+        return redirect(url_for("organizer_hackathon_detail", hackathon_id=hackathon_id, message="Team not found."))
+    file = request.files.get("file")
+    if not file or not allowed_file(file.filename):
+        return redirect(url_for("organizer_hackathon_detail", hackathon_id=hackathon_id, message="Invalid or missing file."))
     content = file.read()
     if len(content) > MAX_FILE_SIZE:
-        return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id, message="File too large (max 2MB)."))
-
+        return redirect(url_for("organizer_hackathon_detail", hackathon_id=hackathon_id, message="File exceeds 2 MB."))
     file.seek(0)
     filename = secure_filename(file.filename)
-    fs.put(file, filename=filename, team_id=team_id, team_name=team["team_name"], uploaded_by=f"ORGANIZER:{current_user.regn_no}")
-    return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id, message=f"'{filename}' uploaded."))
+    key      = make_s3_key(team_id, filename)
+    s3_upload(file, key, filename)
+    teams_col.update_one({"_id": ObjectId(team_id)}, {"$push": {"files": {
+        "file_id": str(uuid.uuid4()), "filename": filename,
+        "s3_key": key, "uploaded_by": f"organizer:{current_user.regn_no}",
+        "uploaded_at": now_ist().isoformat(),
+    }}})
+    return redirect(url_for("organizer_hackathon_detail", hackathon_id=hackathon_id, message=f"'{filename}' uploaded."))
 
-# ----- Organizer Delete File from Team -----
-@app.route('/organizer/hackathon/<hackathon_id>/team/<team_id>/file/<file_id>/delete', methods=['POST'])
+@app.route("/organizer/hackathon/<hackathon_id>/team/<team_id>/file/<file_id>/delete", methods=["POST"])
 @login_required
-@organizer_required
+@organizer_only
 def organizer_delete_file(hackathon_id, team_id, file_id):
-    hackathon, err = get_hackathon_or_403(hackathon_id, check_owner=True)
-    if err:
-        return err
-    try:
-        f = fs.get(ObjectId(file_id))
-        fs.delete(f._id)
-        message = "File deleted."
-    except Exception:
-        message = "Error deleting file."
-    return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id, message=message))
+    h, err = fetch_hackathon(hackathon_id, check_owner=True)
+    if err: return err
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if team:
+        fd = next((f for f in team.get("files", []) if f["file_id"] == file_id), None)
+        if fd:
+            s3_delete(fd["s3_key"])
+            teams_col.update_one({"_id": ObjectId(team_id)}, {"$pull": {"files": {"file_id": file_id}}})
+    return redirect(url_for("organizer_hackathon_detail", hackathon_id=hackathon_id, message="File deleted."))
 
-# ----- Organizer Download File -----
-@app.route('/organizer/hackathon/<hackathon_id>/team/<team_id>/file/<file_id>')
+@app.route("/organizer/hackathon/<hackathon_id>/team/<team_id>/file/<file_id>/download")
 @login_required
-@organizer_required
+@organizer_only
 def organizer_download_file(hackathon_id, team_id, file_id):
-    hackathon, err = get_hackathon_or_403(hackathon_id, check_owner=True)
-    if err:
-        return err
-    f = fs.get(ObjectId(file_id))
-    return send_file(BytesIO(f.read()), download_name=f.filename, as_attachment=True)
+    h, err = fetch_hackathon(hackathon_id, check_owner=True)
+    if err: return err
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team: return "Not found", 404
+    fd = next((f for f in team.get("files", []) if f["file_id"] == file_id), None)
+    if not fd: return "File not found", 404
+    return redirect(s3_presign(fd["s3_key"]))
 
-# ----- Organizer Remove Team -----
-@app.route('/organizer/hackathon/<hackathon_id>/team/<team_id>/delete', methods=['POST'])
+@app.route("/organizer/hackathon/<hackathon_id>/team/<team_id>/delete", methods=["POST"])
 @login_required
-@organizer_required
+@organizer_only
 def organizer_delete_team(hackathon_id, team_id):
-    hackathon, err = get_hackathon_or_403(hackathon_id, check_owner=True)
-    if err:
-        return err
-    for f in fs.find({"team_id": team_id}):
-        fs.delete(f._id)
-    teams_collection.delete_one({"_id": ObjectId(team_id)})
-    return redirect(url_for('organizer_hackathon_detail', hackathon_id=hackathon_id, message="Team deleted."))
+    h, err = fetch_hackathon(hackathon_id, check_owner=True)
+    if err: return err
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if team:
+        for f in team.get("files", []): s3_delete(f["s3_key"])
+        teams_col.delete_one({"_id": ObjectId(team_id)})
+    return redirect(url_for("organizer_hackathon_detail", hackathon_id=hackathon_id, message="Team deleted."))
 
-# ============================================================
-#  LEGACY ADMIN ROUTES (kept for backward compatibility)
-# ============================================================
-
-@app.route('/admin_login', methods=['GET', 'POST'])
+# ─────────────────────────────────────────
+# ADMIN (legacy super-admin)
+# ─────────────────────────────────────────
+@app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
-    message = ""
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '')
-        if username != os.getenv("ADMIN_USERNAME") or not check_password(password, os.getenv("ADMIN_PASSWORD_HASH")):
-            message = "You are not the Admin!"
-            return render_template('admin_login.html', message=message)
-        session['admin_logged_in'] = True
-        return redirect(url_for('admin_dashboard'))
-    return render_template('admin_login.html', message=message)
+    if request.method == "POST":
+        if request.form.get("username") != os.getenv("ADMIN_USERNAME") or \
+           not check_pw(request.form.get("password",""), os.getenv("ADMIN_PASSWORD_HASH","")):
+            return render_template("admin_login.html", error="Invalid credentials.")
+        session["admin_logged_in"] = True
+        return redirect(url_for("admin_dashboard"))
+    return render_template("admin_login.html")
 
-@app.route('/admin_dashboard')
+@app.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
-    teams = list(teams_collection.find())
-    for team in teams:
-        team["_id"]        = str(team["_id"])
-        team["points"]     = team.get("points", 0)
-        team["github_repo"] = team.get("github_repo", "")
-        team_files = []
-        for f in fs.find({"team_id": team["_id"]}):
-            team_files.append({"_id": str(f._id), "filename": f.filename})
-        team["files"] = team_files
-
-    hackathons = list(hackathons_collection.find())
+    hackathons = list(hackathons_col.find())
     for h in hackathons:
         h["_id"] = str(h["_id"])
+        h["participant_count"] = len(h.get("participants", []))
+        h["team_count"] = teams_col.count_documents({"hackathon_id": str(h["_id"])})
+    teams = [enrich_team(t) for t in teams_col.find()]
+    return render_template("admin_dashboard.html",
+                           hackathons=hackathons, teams=teams,
+                           message=request.args.get("message", ""))
 
-    message = request.args.get('message', '')
-    return render_template('admin_dashboard.html', teams=teams, hackathons=hackathons, message=message)
-
-@app.route('/admin/team/<team_id>/update_points', methods=['POST'])
+@app.route("/admin/team/<team_id>/points", methods=["POST"])
 @admin_required
 def admin_update_points(team_id):
     try:
-        new_points = int(request.form.get('points', 0))
-        teams_collection.update_one({"_id": ObjectId(team_id)}, {"$set": {"points": new_points}})
-        message = "Points updated for team."
+        teams_col.update_one({"_id": ObjectId(team_id)},
+                              {"$set": {"points": int(request.form.get("points", 0))}})
+        msg = "Points updated."
     except Exception:
-        message = "Error updating points."
-    return redirect(url_for('admin_dashboard', message=message))
+        msg = "Error updating points."
+    return redirect(url_for("admin_dashboard", message=msg))
 
-@app.route('/admin/team/<team_id>/upload', methods=['POST'])
+@app.route("/admin/team/<team_id>/upload", methods=["POST"])
 @admin_required
 def admin_upload_file(team_id):
-    team = teams_collection.find_one({"_id": ObjectId(team_id)})
-    if not team:
-        return redirect(url_for('admin_dashboard', message="Team not found."))
-    file = request.files.get('file')
-    if not file:
-        return redirect(url_for('admin_dashboard', message="No file provided."))
-    if not allowed_file(file.filename):
-        return redirect(url_for('admin_dashboard', message="Invalid file type."))
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team: return redirect(url_for("admin_dashboard", message="Team not found."))
+    file = request.files.get("file")
+    if not file or not allowed_file(file.filename):
+        return redirect(url_for("admin_dashboard", message="Invalid file."))
     content = file.read()
     if len(content) > MAX_FILE_SIZE:
-        return redirect(url_for('admin_dashboard', message="File too large. Max 2 MB."))
+        return redirect(url_for("admin_dashboard", message="File too large."))
     file.seek(0)
     filename = secure_filename(file.filename)
-    fs.put(file, filename=filename, team_id=team_id, team_name=team["team_name"], uploaded_by="ADMIN")
-    return redirect(url_for('admin_dashboard', message=f"File '{filename}' uploaded successfully."))
+    key      = make_s3_key(team_id, filename)
+    s3_upload(file, key, filename)
+    teams_col.update_one({"_id": ObjectId(team_id)}, {"$push": {"files": {
+        "file_id": str(uuid.uuid4()), "filename": filename,
+        "s3_key": key, "uploaded_by": "admin", "uploaded_at": now_ist().isoformat(),
+    }}})
+    return redirect(url_for("admin_dashboard", message=f"'{filename}' uploaded."))
 
-@app.route('/admin/team/<team_id>/file/<file_id>/delete', methods=['POST'])
+@app.route("/admin/team/<team_id>/file/<file_id>/delete", methods=["POST"])
 @admin_required
 def admin_delete_file(team_id, file_id):
-    try:
-        f = fs.get(ObjectId(file_id))
-        fs.delete(f._id)
-        message = f"File '{f.filename}' deleted successfully."
-    except Exception:
-        message = "Error deleting file."
-    return redirect(url_for('admin_dashboard', message=message))
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team: return redirect(url_for("admin_dashboard"))
+    fd = next((f for f in team.get("files", []) if f["file_id"] == file_id), None)
+    if fd:
+        s3_delete(fd["s3_key"])
+        teams_col.update_one({"_id": ObjectId(team_id)}, {"$pull": {"files": {"file_id": file_id}}})
+    return redirect(url_for("admin_dashboard", message="File deleted."))
 
-@app.route('/admin/team/<team_id>/file/<file_id>')
+@app.route("/admin/team/<team_id>/file/<file_id>/download")
 @admin_required
 def admin_download_file(team_id, file_id):
-    f = fs.get(ObjectId(file_id))
-    return send_file(BytesIO(f.read()), download_name=f.filename, as_attachment=True)
+    team = teams_col.find_one({"_id": ObjectId(team_id)})
+    if not team: return "Not found", 404
+    fd = next((f for f in team.get("files", []) if f["file_id"] == file_id), None)
+    if not fd: return "File not found", 404
+    return redirect(s3_presign(fd["s3_key"]))
 
-@app.route('/admin_logout')
+@app.route("/admin/logout")
 @admin_required
 def admin_logout():
-    session.pop('admin_logged_in', None)
-    return redirect(url_for('admin_login'))
+    session.pop("admin_logged_in", None)
+    return redirect(url_for("admin_login"))
 
-# ============================================================
-#  LEGACY dashboard alias (redirects based on role)
-# ============================================================
-@app.route('/dashboard')
+# backward-compat aliases
+@app.route("/admin_login")
+def admin_login_alias(): return redirect(url_for("admin_login"))
+@app.route("/admin_dashboard")
+def admin_dashboard_alias(): return redirect(url_for("admin_dashboard"))
+@app.route("/participant_dashboard")
 @login_required
-def dashboard():
-    if current_user.role == 'organizer':
-        return redirect(url_for('organizer_dashboard'))
-    return redirect(url_for('participant_dashboard'))
+def participant_dashboard_alias(): return redirect(url_for("participant_dashboard"))
+@app.route("/organizer_dashboard")
+@login_required
+def organizer_dashboard_alias(): return redirect(url_for("organizer_dashboard"))
 
-# ============================================================
-#  Run
-# ============================================================
 if __name__ == "__main__":
     app.run(debug=True)

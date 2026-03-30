@@ -1,51 +1,58 @@
 {% extends "base.html" %}
-{% block title %}Organizer Dashboard – TeamUp{% endblock %}
+{% block title %}Organizer Dashboard — TeamUp{% endblock %}
 {% block content %}
-<div class="container">
-    <div class="page-header flex-between">
-        <div>
-            <h1>Organizer Dashboard</h1>
-            <p>Welcome, {{ user.first_name }}. Manage your hackathons here.</p>
-        </div>
-        <a href="{{ url_for('create_hackathon') }}" class="btn btn-primary">+ New Hackathon</a>
+<div class="page fade-up">
+  <div class="flex-between page-header">
+    <div>
+      <h1>Hackathons</h1>
+      <p>Manage all your events</p>
     </div>
+    <a href="{{ url_for('create_hackathon') }}" class="btn btn-primary">New hackathon</a>
+  </div>
 
-    {% if hackathons %}
-    <div class="card-grid">
-        {% for h in hackathons %}
-        <div class="card">
-            <div class="flex-between" style="margin-bottom:0.5rem;">
-                <h3>{{ h.name }}</h3>
-                <span class="badge badge-{{ h.status }}">{{ h.status|capitalize }}</span>
-            </div>
-            <p>{{ h.description[:100] }}{% if h.description|length > 100 %}…{% endif %}</p>
-            <div class="stat-grid" style="margin-top:1rem;grid-template-columns:repeat(3,1fr);gap:0.5rem;">
-                <div class="stat-tile">
-                    <div class="stat-num" style="font-size:1.3rem;">{{ h.participant_count }}</div>
-                    <div class="stat-label">Participants</div>
-                </div>
-                <div class="stat-tile">
-                    <div class="stat-num" style="font-size:1.3rem;">{{ h.team_count }}</div>
-                    <div class="stat-label">Teams</div>
-                </div>
-                <div class="stat-tile">
-                    <div class="stat-num" style="font-size:1.3rem;">{{ h.join_code }}</div>
-                    <div class="stat-label" style="font-size:0.7rem;">Join Code</div>
-                </div>
-            </div>
-            <div style="margin-top:1rem;display:flex;gap:0.5rem;">
-                <a href="{{ url_for('organizer_hackathon_detail', hackathon_id=h._id) }}" class="btn btn-primary btn-sm">Manage</a>
-                <a href="{{ url_for('edit_hackathon', hackathon_id=h._id) }}" class="btn btn-outline btn-sm">Edit</a>
-            </div>
+  {% if hackathons %}
+  <div class="card-grid">
+    {% for h in hackathons %}
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:0.75rem;">
+        <span class="badge badge-{{ h.status }}">{{ h.status|capitalize }}</span>
+        {% if h.teams_locked %}<span class="badge badge-locked">Locked</span>{% endif %}
+      </div>
+      <h3 style="font-family:var(--font-serif);font-size:1.1rem;font-weight:600;margin-bottom:0.3rem;">{{ h.name }}</h3>
+      <p class="text-small text-muted" style="margin-bottom:1rem;line-height:1.5;">
+        {{ h.description[:90] }}{% if h.description|length > 90 %}…{% endif %}
+      </p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:1rem;">
+        <div style="text-align:center;padding:0.5rem;background:var(--bg-3);border-radius:var(--radius);">
+          <div style="font-family:var(--font-serif);font-size:1.2rem;font-weight:600;">{{ h.participant_count }}</div>
+          <div class="text-small text-muted">People</div>
         </div>
-        {% endfor %}
+        <div style="text-align:center;padding:0.5rem;background:var(--bg-3);border-radius:var(--radius);">
+          <div style="font-family:var(--font-serif);font-size:1.2rem;font-weight:600;">{{ h.team_count }}</div>
+          <div class="text-small text-muted">Teams</div>
+        </div>
+        <div style="text-align:center;padding:0.5rem;background:var(--bg-3);border-radius:var(--radius);">
+          <div class="text-mono" style="font-size:0.72rem;padding-top:0.2rem;word-break:break-all;">{{ h.join_code }}</div>
+          <div class="text-small text-muted">Code</div>
+        </div>
+      </div>
+
+      <div class="flex-center gap-1">
+        <a href="{{ url_for('organizer_hackathon_detail', hackathon_id=h._id) }}" class="btn btn-primary btn-sm">Manage →</a>
+        <a href="{{ url_for('edit_hackathon', hackathon_id=h._id) }}" class="btn btn-ghost btn-sm">Edit</a>
+      </div>
     </div>
-    {% else %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">
     <div class="empty">
-        <div style="font-size:2.5rem;">🎯</div>
-        <p>No hackathons created yet.</p>
-        <a href="{{ url_for('create_hackathon') }}" class="btn btn-primary btn-sm" style="margin-top:1rem;">Create your first</a>
+      <div class="empty-icon">🎯</div>
+      <p>No hackathons yet. Create your first one.</p>
+      <a href="{{ url_for('create_hackathon') }}" class="btn btn-primary btn-sm">Create hackathon</a>
     </div>
-    {% endif %}
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

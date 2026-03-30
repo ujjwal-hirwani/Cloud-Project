@@ -1,101 +1,188 @@
 {% extends "base.html" %}
-{% block title %}Admin Dashboard – TeamUp{% endblock %}
+{% block title %}Admin Dashboard — TeamUp{% endblock %}
 {% block extra_head %}
 <style>
-nav .nav-brand::after { content: " [ADMIN]"; font-size:0.65rem; color:var(--danger); vertical-align:super; }
+  .admin-bar {
+    background: rgba(224,92,92,0.07);
+    border-bottom: 1px solid rgba(224,92,92,0.15);
+    padding: 0.5rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .admin-bar span { font-size: 0.75rem; color: var(--red); font-family: var(--font-mono); }
+  .tab-nav {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.5rem;
+  }
+  .tab-btn {
+    padding: 0.65rem 1.25rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-2);
+    cursor: pointer;
+    border: none;
+    background: none;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    font-family: var(--font-ui);
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 </style>
 {% endblock %}
 {% block content %}
-<div class="container">
-    <div class="page-header flex-between">
-        <div>
-            <h1>Super Admin Dashboard</h1>
-            <p>Global system overview</p>
-        </div>
-        <a href="{{ url_for('admin_logout') }}" class="btn btn-danger btn-sm">Logout</a>
+
+<div class="admin-bar">
+  <span>⬡ SUPER ADMIN MODE</span>
+  <a href="{{ url_for('admin_logout') }}" class="btn btn-danger btn-sm">Sign out</a>
+</div>
+
+<div class="page fade-up">
+  <div class="page-header">
+    <h1>Admin Dashboard</h1>
+    <p>Global system overview — all hackathons and teams</p>
+  </div>
+
+  {% if message %}
+  <div class="alert {% if 'error' in message.lower() or 'fail' in message.lower() %}alert-error{% else %}alert-success{% endif %}">
+    <span class="alert-icon">{% if 'error' in message.lower() %}⚠{% else %}✓{% endif %}</span> {{ message }}
+  </div>
+  {% endif %}
+
+  <!-- Global stats -->
+  <div class="stat-row">
+    <div class="stat-tile">
+      <div class="stat-num">{{ hackathons|length }}</div>
+      <div class="stat-label">Hackathons</div>
     </div>
+    <div class="stat-tile">
+      <div class="stat-num">{{ teams|length }}</div>
+      <div class="stat-label">Teams</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-num">{{ hackathons | sum(attribute='participant_count') }}</div>
+      <div class="stat-label">Total Participants</div>
+    </div>
+  </div>
 
-    {% if message %}
-    <div class="alert {% if 'error' in message.lower() %}alert-error{% else %}alert-success{% endif %}">{{ message }}</div>
-    {% endif %}
+  <!-- Tabs -->
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('hackathons', this)">Hackathons ({{ hackathons|length }})</button>
+    <button class="tab-btn" onclick="switchTab('teams', this)">Teams ({{ teams|length }})</button>
+  </div>
 
-    <!-- Hackathon overview -->
-    <div class="section-header">All Hackathons</div>
+  <!-- ── HACKATHONS TAB ── -->
+  <div id="tab-hackathons" class="tab-panel active">
     {% if hackathons %}
-    <div class="card" style="padding:0;margin-bottom:2rem;">
+    <div class="card" style="padding:0;">
+      <div class="table-wrap">
         <table>
-            <thead><tr><th>Name</th><th>Organizer</th><th>Status</th><th>Join Code</th></tr></thead>
-            <tbody>
-                {% for h in hackathons %}
-                <tr>
-                    <td><strong>{{ h.name }}</strong></td>
-                    <td style="color:var(--muted);">{{ h.organizer_name }}</td>
-                    <td><span class="badge badge-{{ h.status }}">{{ h.status|capitalize }}</span></td>
-                    <td><span class="code-chip">{{ h.join_code }}</span></td>
-                </tr>
-                {% endfor %}
-            </tbody>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Organizer</th>
+              <th>Status</th>
+              <th>Participants</th>
+              <th>Teams</th>
+              <th>Join Code</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for h in hackathons %}
+            <tr>
+              <td style="font-weight:500;">{{ h.name }}</td>
+              <td class="text-muted text-small">{{ h.organizer_name }}</td>
+              <td><span class="badge badge-{{ h.status }}">{{ h.status|capitalize }}</span></td>
+              <td class="text-muted">{{ h.participant_count }}</td>
+              <td class="text-muted">{{ h.team_count }}</td>
+              <td><span class="chip">{{ h.join_code }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
         </table>
+      </div>
     </div>
+    {% else %}
+    <div class="card"><div class="empty"><p>No hackathons found.</p></div></div>
     {% endif %}
+  </div>
 
-    <!-- All Teams -->
-    <div class="section-header">All Teams</div>
+  <!-- ── TEAMS TAB ── -->
+  <div id="tab-teams" class="tab-panel">
     {% if teams %}
     {% for team in teams %}
     <div class="card" style="margin-bottom:1rem;">
-        <div class="flex-between" style="margin-bottom:0.75rem;">
-            <div>
-                <h3>{{ team.team_name }}</h3>
-                <span style="font-size:0.82rem;color:var(--muted);">Code: <span class="code-chip">{{ team.code }}</span></span>
-                {% if team.github_repo %}
-                <a href="{{ team.github_repo }}" target="_blank" style="color:var(--accent);font-size:0.82rem;margin-left:0.5rem;">GitHub</a>
-                {% endif %}
-            </div>
-            <span style="font-family:'Syne',sans-serif;font-size:1.3rem;font-weight:800;color:var(--accent);">
-                {{ team.points }} pts
-            </span>
+      <div class="flex-between" style="margin-bottom:1rem;">
+        <div>
+          <div class="flex-center gap-1" style="margin-bottom:0.25rem;">
+            <h3 style="font-family:var(--font-serif);font-size:1rem;font-weight:600;">{{ team.team_name }}</h3>
+            <span class="chip">{{ team.code }}</span>
+          </div>
+          <p class="text-small text-muted">{{ team.member_count }} member{{ 's' if team.member_count != 1 }}</p>
+          {% if team.github_repo %}
+          <a href="{{ team.github_repo }}" target="_blank" style="color:var(--accent);font-size:0.75rem;">
+            {{ team.github_repo }}
+          </a>
+          {% endif %}
         </div>
+        <!-- Update points -->
+        <form method="POST" action="{{ url_for('admin_update_points', team_id=team._id) }}"
+              style="display:flex;gap:0.5rem;align-items:center;">
+          <label style="display:none;">Points</label>
+          <input type="number" name="points" value="{{ team.points }}" min="0"
+                 style="width:80px;text-align:right;" />
+          <button type="submit" class="btn btn-primary btn-sm">Save pts</button>
+        </form>
+      </div>
 
-        <div style="display:grid;grid-template-columns:auto 1fr auto;gap:1rem;align-items:start;">
-            <!-- Update Points -->
-            <form method="POST" action="{{ url_for('admin_update_points', team_id=team._id) }}"
-                  style="display:flex;gap:0.5rem;align-items:center;">
-                <input type="number" name="points" value="{{ team.points }}" min="0" style="width:80px;" />
-                <button type="submit" class="btn btn-primary btn-sm">Update Points</button>
+      <!-- Files -->
+      <div>
+        <p class="section-label" style="margin-bottom:0.5rem;">Files</p>
+        {% if team.files %}
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.75rem;">
+          {% for f in team.files %}
+          <div class="file-pill">
+            <span>📄</span>
+            <span>{{ f.filename }}</span>
+            <a href="{{ url_for('admin_download_file', team_id=team._id, file_id=f.file_id) }}" title="Download">↓</a>
+            <form method="POST" action="{{ url_for('admin_delete_file', team_id=team._id, file_id=f.file_id) }}"
+                  onsubmit="return confirm('Delete file?');" style="display:inline;">
+              <button type="submit" title="Delete">✕</button>
             </form>
-
-            <!-- Files -->
-            <div>
-                {% if team.files %}
-                <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">
-                    {% for f in team.files %}
-                    <div style="display:flex;align-items:center;gap:0.4rem;background:var(--bg);border:1px solid var(--border);padding:0.25rem 0.5rem;border-radius:6px;font-size:0.8rem;">
-                        📄 {{ f.filename }}
-                        <a href="{{ url_for('admin_download_file', team_id=team._id, file_id=f._id) }}" style="color:var(--accent);">↓</a>
-                        <form method="POST" action="{{ url_for('admin_delete_file', team_id=team._id, file_id=f._id) }}"
-                              onsubmit="return confirm('Delete file?');" style="display:inline;">
-                            <button type="submit" style="background:none;border:none;cursor:pointer;color:var(--danger);">✕</button>
-                        </form>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <span style="font-size:0.82rem;color:var(--muted);">No files</span>
-                {% endif %}
-            </div>
-
-            <!-- Upload -->
-            <form method="POST" action="{{ url_for('admin_upload_file', team_id=team._id) }}"
-                  enctype="multipart/form-data" style="display:flex;gap:0.5rem;align-items:center;">
-                <input type="file" name="file" accept=".pdf,.docx,.ppt,.pptx" style="font-size:0.8rem;" />
-                <button type="submit" class="btn btn-outline btn-sm">Upload</button>
-            </form>
+          </div>
+          {% endfor %}
         </div>
+        {% else %}
+        <p class="text-small text-muted" style="margin-bottom:0.5rem;">No files.</p>
+        {% endif %}
+
+        <!-- Upload -->
+        <form method="POST" action="{{ url_for('admin_upload_file', team_id=team._id) }}"
+              enctype="multipart/form-data" style="display:flex;gap:0.5rem;align-items:center;">
+          <input type="file" name="file" accept=".pdf,.docx,.ppt,.pptx"
+                 style="font-size:0.75rem;padding:0.3rem;" />
+          <button type="submit" class="btn btn-ghost btn-sm" style="flex-shrink:0;">Upload</button>
+        </form>
+      </div>
     </div>
     {% endfor %}
     {% else %}
-    <div class="empty"><p>No teams found.</p></div>
+    <div class="card"><div class="empty"><p>No teams found.</p></div></div>
     {% endif %}
+  </div>
 </div>
+
+<script>
+  function switchTab(name, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+</script>
 {% endblock %}

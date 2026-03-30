@@ -1,35 +1,37 @@
 {% extends "base.html" %}
-{% block title %}Create Team – TeamUp{% endblock %}
+{% block title %}Create Team — TeamUp{% endblock %}
 {% block content %}
-<div class="container" style="max-width:520px;padding-top:2.5rem;">
-    <div class="page-header">
-        <h1>Create Team</h1>
-        <p>For: <strong>{{ hackathon.name }}</strong></p>
-    </div>
+<div class="page-md fade-up">
+  <div class="page-header">
+    <h1>Create a team</h1>
+    <p>For <strong style="color:var(--text);">{{ hackathon.name }}</strong></p>
+  </div>
 
-    {% if message %}
-    <div class="alert alert-error">{{ message }}</div>
-    {% endif %}
+  {% if error %}
+  <div class="alert alert-error">
+    <span class="alert-icon">⚠</span> {{ error }}
+  </div>
+  {% endif %}
 
-    <div class="card">
-        <form method="POST" action="{{ url_for('create_team', hackathon_id=hackathon._id) }}">
-            <div class="form-group">
-                <label>Team Name</label>
-                <input type="text" name="team_name" required placeholder="Awesome Hackers" />
-            </div>
-            <div class="form-group">
-                <label>Description</label>
-                <textarea name="description" placeholder="What are you building?"></textarea>
-            </div>
-            <div class="form-group">
-                <label>GitHub Repo URL (optional)</label>
-                <input type="text" name="github_repo" placeholder="https://github.com/yourteam/repo" />
-            </div>
-            <div style="display:flex;gap:0.75rem;">
-                <button type="submit" class="btn btn-primary">Create Team</button>
-                <a href="{{ url_for('hackathon_lobby', hackathon_id=hackathon._id) }}" class="btn btn-outline">Cancel</a>
-            </div>
-        </form>
-    </div>
+  <div class="card">
+    <form method="POST" action="{{ url_for('create_team', hackathon_id=hackathon._id) }}">
+      <div class="form-group">
+        <label for="team_name">Team name</label>
+        <input type="text" id="team_name" name="team_name" required placeholder="Awesome Builders" />
+      </div>
+      <div class="form-group">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" placeholder="What are you building?"></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:1.5rem;">
+        <label for="github_repo">GitHub repository URL <span class="text-muted">(optional)</span></label>
+        <input type="text" id="github_repo" name="github_repo" placeholder="https://github.com/yourteam/repo" />
+      </div>
+      <div class="flex-center gap-1">
+        <button type="submit" class="btn btn-primary">Create team</button>
+        <a href="{{ url_for('hackathon_lobby', hackathon_id=hackathon._id) }}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
 </div>
 {% endblock %}

@@ -1,28 +1,38 @@
 {% extends "base.html" %}
-{% block title %}Join Hackathon – TeamUp{% endblock %}
+{% block title %}Join Hackathon — TeamUp{% endblock %}
 {% block content %}
-<div class="container" style="max-width:460px;padding-top:3rem;">
-    <div class="page-header">
-        <h1>Join a Hackathon</h1>
-        <p>Enter the join code provided by your organizer</p>
-    </div>
+<div class="page-sm fade-up">
+  <div class="page-header" style="text-align:center;">
+    <h1>Join a hackathon</h1>
+    <p>Enter the 8-character join code from your organizer</p>
+  </div>
 
-    {% if message %}
-    <div class="alert alert-error">{{ message }}</div>
-    {% endif %}
+  {% if error %}
+  <div class="alert alert-error">
+    <span class="alert-icon">⚠</span> {{ error }}
+  </div>
+  {% endif %}
 
-    <div class="card">
-        <form method="POST" action="{{ url_for('join_hackathon') }}">
-            <div class="form-group">
-                <label>Hackathon Code</label>
-                <input type="text" name="join_code" required placeholder="e.g. HK7A2B9C"
-                       style="font-size:1.2rem;letter-spacing:0.15em;text-align:center;text-transform:uppercase;" />
-            </div>
-            <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">Join Hackathon</button>
-        </form>
-    </div>
-    <div style="text-align:center;margin-top:1rem;">
-        <a href="{{ url_for('participant_dashboard') }}" class="btn btn-outline btn-sm">← Back to Dashboard</a>
-    </div>
+  <div class="card">
+    <form method="POST" action="{{ url_for('join_hackathon') }}">
+      <div class="form-group" style="margin-bottom:1.5rem;">
+        <label for="join_code">Hackathon code</label>
+        <input
+          type="text"
+          id="join_code"
+          name="join_code"
+          required
+          placeholder="e.g. HK7A2B9C"
+          maxlength="8"
+          style="font-family:var(--font-mono);font-size:1.25rem;letter-spacing:0.18em;text-align:center;text-transform:uppercase;"
+        />
+      </div>
+      <button type="submit" class="btn btn-primary btn-block btn-lg">Join hackathon</button>
+    </form>
+  </div>
+
+  <div style="text-align:center;margin-top:1.25rem;">
+    <a href="{{ url_for('participant_dashboard') }}" class="btn btn-ghost btn-sm">← Back to dashboard</a>
+  </div>
 </div>
 {% endblock %}

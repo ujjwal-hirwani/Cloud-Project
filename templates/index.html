@@ -1,49 +1,79 @@
 {% extends "base.html" %}
-{% block title %}TeamUp – Hackathon Platform{% endblock %}
+{% block title %}TeamUp — Hackathon Platform{% endblock %}
+{% block extra_head %}
+<style>
+  .hero {
+    padding: 6rem 2rem 4rem;
+    max-width: 680px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  .hero-eyebrow {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 1.25rem;
+    padding: 0.25rem 0.75rem;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent-glow);
+    border-radius: 100px;
+  }
+  .hero h1 {
+    font-family: var(--font-serif);
+    font-size: clamp(2rem, 5vw, 3.25rem);
+    font-weight: 600;
+    line-height: 1.15;
+    color: var(--text);
+    margin-bottom: 1.25rem;
+  }
+  .hero p {
+    font-size: 1rem;
+    color: var(--text-2);
+    line-height: 1.75;
+    max-width: 480px;
+    margin: 0 auto 2.5rem;
+  }
+  .hero-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+  .hackathons-section { max-width: 1120px; margin: 0 auto; padding: 0 2rem 4rem; }
+</style>
+{% endblock %}
 {% block content %}
-<div class="container" style="padding-top:4rem;">
-    <div style="text-align:center;max-width:600px;margin:0 auto 3rem;">
-        <h1 style="font-family:'Syne',sans-serif;font-size:2.8rem;font-weight:800;line-height:1.15;margin-bottom:1rem;">
-            Run hackathons.<br>
-            <span style="background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">
-                Build teams. Ship fast.
-            </span>
-        </h1>
-        <p style="color:var(--muted);font-size:1rem;line-height:1.7;margin-bottom:2rem;">
-            TeamUp lets organizers create and manage hackathons, and participants discover events, form teams, and submit projects — all in one place.
-        </p>
-        <div class="flex-center" style="justify-content:center;gap:1rem;">
-            <a href="{{ url_for('signup') }}" class="btn btn-primary">Get Started</a>
-            <a href="{{ url_for('login') }}" class="btn btn-outline">Sign In</a>
-        </div>
-    </div>
-
-    {% if hackathons %}
-    <div class="section-header">Open Hackathons</div>
-    <div class="card-grid">
-        {% for h in hackathons %}
-        <div class="card">
-            <div class="flex-between mb-0" style="margin-bottom:0.5rem;">
-                <h3>{{ h.name }}</h3>
-                <span class="badge badge-open">Open</span>
-            </div>
-            <p>{{ h.description[:120] }}{% if h.description|length > 120 %}…{% endif %}</p>
-            {% if h.start_date %}
-            <p style="margin-top:0.5rem;font-size:0.8rem;color:var(--muted);">
-                📅 {{ h.start_date }}{% if h.end_date %} → {{ h.end_date }}{% endif %}
-            </p>
-            {% endif %}
-            <div style="margin-top:1rem;">
-                <a href="{{ url_for('join_hackathon') }}" class="btn btn-primary btn-sm">Join</a>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty">
-        <div style="font-size:2.5rem;">🚀</div>
-        <p>No hackathons open right now. Check back soon!</p>
-    </div>
-    {% endif %}
+<div class="hero fade-up">
+  <span class="hero-eyebrow">Hackathon Platform</span>
+  <h1>Build teams.<br>Ship products.<br>Win hackathons.</h1>
+  <p>TeamUp is the platform for organizers to run world-class hackathons and for participants to find teammates and submit projects.</p>
+  <div class="hero-actions">
+    <a href="{{ url_for('signup') }}" class="btn btn-primary btn-lg">Get started free</a>
+    <a href="{{ url_for('login') }}" class="btn btn-ghost btn-lg">Sign in</a>
+  </div>
 </div>
+
+{% if hackathons %}
+<div class="hackathons-section">
+  <p class="section-label">Open Hackathons</p>
+  <div class="card-grid">
+    {% for h in hackathons %}
+    <div class="card fade-up">
+      <div class="flex-between mb-2" style="margin-bottom:0.75rem;">
+        <span class="badge badge-open">Open</span>
+        {% if h.participant_count is defined %}
+        <span class="text-small text-muted">{{ h.participant_count }} joined</span>
+        {% endif %}
+      </div>
+      <h3 style="font-family:var(--font-serif);font-size:1.1rem;font-weight:600;margin-bottom:0.4rem;">{{ h.name }}</h3>
+      <p class="text-muted text-small" style="line-height:1.5;margin-bottom:1rem;">{{ h.description[:110] }}{% if h.description|length > 110 %}…{% endif %}</p>
+      {% if h.start_date %}
+      <p class="text-small text-muted" style="margin-bottom:1rem;font-family:var(--font-mono);">
+        {{ h.start_date }}{% if h.end_date %} → {{ h.end_date }}{% endif %}
+      </p>
+      {% endif %}
+      <a href="{{ url_for('join_hackathon') }}" class="btn btn-primary btn-sm">Join →</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 {% endblock %}

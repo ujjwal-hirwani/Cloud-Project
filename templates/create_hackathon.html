@@ -1,53 +1,55 @@
 {% extends "base.html" %}
-{% block title %}Create Hackathon – TeamUp{% endblock %}
+{% block title %}New Hackathon — TeamUp{% endblock %}
 {% block content %}
-<div class="container" style="max-width:580px;padding-top:2.5rem;">
-    <div class="page-header">
-        <h1>Create Hackathon</h1>
-        <p>Fill in the details for your new event.</p>
-    </div>
+<div class="page-md fade-up">
+  <div class="page-header">
+    <h1>Create a hackathon</h1>
+    <p>Fill in the details for your new event</p>
+  </div>
 
-    {% if message %}
-    <div class="alert alert-error">{{ message }}</div>
-    {% endif %}
+  {% if error %}
+  <div class="alert alert-error"><span class="alert-icon">⚠</span> {{ error }}</div>
+  {% endif %}
 
-    <div class="card">
-        <form method="POST" action="{{ url_for('create_hackathon') }}">
-            <div class="form-group">
-                <label>Hackathon Name</label>
-                <input type="text" name="name" required placeholder="HackFest 2025" />
-            </div>
-            <div class="form-group">
-                <label>Description</label>
-                <textarea name="description" placeholder="What's this hackathon about?"></textarea>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-                <div class="form-group">
-                    <label>Start Date</label>
-                    <input type="date" name="start_date" />
-                </div>
-                <div class="form-group">
-                    <label>End Date</label>
-                    <input type="date" name="end_date" />
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Max Team Size (0 = unlimited)</label>
-                <input type="number" name="max_team_size" value="4" min="0" max="20" />
-            </div>
-            <div class="form-group">
-                <label>Initial Status</label>
-                <select name="status">
-                    <option value="draft">Draft (not visible to participants)</option>
-                    <option value="open">Open (accepting participants)</option>
-                    <option value="closed">Closed</option>
-                </select>
-            </div>
-            <div style="display:flex;gap:0.75rem;">
-                <button type="submit" class="btn btn-primary">Create Hackathon</button>
-                <a href="{{ url_for('organizer_dashboard') }}" class="btn btn-outline">Cancel</a>
-            </div>
-        </form>
-    </div>
+  <div class="card">
+    <form method="POST" action="{{ url_for('create_hackathon') }}">
+      <div class="form-group">
+        <label for="name">Event name</label>
+        <input type="text" id="name" name="name" required placeholder="HackFest 2025" />
+      </div>
+      <div class="form-group">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" placeholder="What will participants build?"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="start_date">Start date</label>
+          <input type="date" id="start_date" name="start_date" />
+        </div>
+        <div class="form-group">
+          <label for="end_date">End date</label>
+          <input type="date" id="end_date" name="end_date" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="max_team_size">Max team size <span class="text-muted">(0 = unlimited)</span></label>
+          <input type="number" id="max_team_size" name="max_team_size" value="4" min="0" max="20" />
+        </div>
+        <div class="form-group">
+          <label for="status">Initial status</label>
+          <select id="status" name="status">
+            <option value="draft">Draft — hidden from participants</option>
+            <option value="open">Open — accepting participants</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex-center gap-1" style="margin-top:0.5rem;">
+        <button type="submit" class="btn btn-primary">Create hackathon</button>
+        <a href="{{ url_for('organizer_dashboard') }}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
 </div>
 {% endblock %}

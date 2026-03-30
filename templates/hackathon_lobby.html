@@ -1,117 +1,142 @@
 {% extends "base.html" %}
-{% block title %}{{ hackathon.name }} – TeamUp{% endblock %}
+{% block title %}{{ hackathon.name }} — TeamUp{% endblock %}
 {% block content %}
-<div class="container">
-    <div class="page-header flex-between">
-        <div>
-            <h1>{{ hackathon.name }}</h1>
-            <p>{{ hackathon.description }}</p>
+<div class="page fade-up">
+  <!-- Header -->
+  <div class="flex-between page-header">
+    <div>
+      <div class="flex-center gap-1" style="margin-bottom:0.5rem;">
+        <a href="{{ url_for('participant_dashboard') }}" class="text-small text-muted">Dashboard</a>
+        <span class="text-muted text-small">/</span>
+        <span class="text-small text-muted">{{ hackathon.name }}</span>
+      </div>
+      <h1>{{ hackathon.name }}</h1>
+      <p>{{ hackathon.description[:120] }}{% if hackathon.description|length > 120 %}…{% endif %}</p>
+    </div>
+    <div class="flex-center gap-1">
+      <span class="badge badge-{{ hackathon.status }}">{{ hackathon.status|capitalize }}</span>
+      {% if hackathon.teams_locked %}<span class="badge badge-locked">Teams locked</span>{% endif %}
+    </div>
+  </div>
+
+  <!-- Info strip -->
+  {% if hackathon.start_date or hackathon.max_team_size %}
+  <div class="card card-sm" style="margin-bottom:1.5rem;">
+    <div class="flex-center gap-3" style="flex-wrap:wrap;">
+      {% if hackathon.start_date %}
+      <span class="text-small"><span class="text-muted">Start:</span> <span class="text-mono">{{ hackathon.start_date }}</span></span>
+      {% endif %}
+      {% if hackathon.end_date %}
+      <span class="text-small"><span class="text-muted">End:</span> <span class="text-mono">{{ hackathon.end_date }}</span></span>
+      {% endif %}
+      {% if hackathon.max_team_size %}
+      <span class="text-small"><span class="text-muted">Max team size:</span> <span class="text-mono">{{ hackathon.max_team_size }}</span></span>
+      {% endif %}
+      <span class="text-small"><span class="text-muted">Organizer:</span> {{ hackathon.organizer_name }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="two-col">
+    <!-- LEFT -->
+    <div>
+      <!-- My team -->
+      <p class="section-label">My Team</p>
+      {% if my_team %}
+      <div class="card" style="border-color:var(--accent-glow);margin-bottom:1.5rem;">
+        <div class="flex-between" style="margin-bottom:0.5rem;">
+          <h3 style="font-family:var(--font-serif);font-size:1.05rem;font-weight:600;">{{ my_team.team_name }}</h3>
+          <div class="flex-center gap-1">
+            <span class="pts">{{ my_team.points }} pts</span>
+            <span class="chip">{{ my_team.code }}</span>
+          </div>
         </div>
+        <p class="text-small text-muted" style="margin-bottom:0.75rem;">
+          {{ my_team.member_count }} member{{ 's' if my_team.member_count != 1 }}
+        </p>
+        <a href="{{ url_for('team_detail', team_id=my_team._id) }}" class="btn btn-primary btn-sm">Manage team →</a>
+      </div>
+      {% else %}
+      <div class="card" style="margin-bottom:1.5rem;">
+        <p class="text-small text-muted" style="margin-bottom:1rem;">You're not in a team yet.</p>
+        {% if not hackathon.teams_locked %}
         <div class="flex-center gap-1">
-            <span class="badge badge-{{ hackathon.status }}">{{ hackathon.status|capitalize }}</span>
-            {% if hackathon.teams_locked %}
-            <span class="badge badge-locked">Teams Locked</span>
-            {% endif %}
+          <a href="{{ url_for('create_team', hackathon_id=hackathon._id) }}" class="btn btn-primary btn-sm">Create team</a>
+          <a href="{{ url_for('join_team', hackathon_id=hackathon._id) }}" class="btn btn-ghost btn-sm">Join with code</a>
         </div>
+        {% else %}
+        <div class="alert alert-warning" style="margin-bottom:0;">
+          <span class="alert-icon">🔒</span> Team registration is locked.
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Leaderboard -->
+      <p class="section-label">Leaderboard</p>
+      {% if leaderboard %}
+      <div class="card" style="padding:0;">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Team</th>
+                <th>Members</th>
+                <th>Points</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for team in leaderboard %}
+              <tr>
+                <td class="text-mono text-muted">
+                  {% if loop.index == 1 %}🥇
+                  {% elif loop.index == 2 %}🥈
+                  {% elif loop.index == 3 %}🥉
+                  {% else %}{{ loop.index }}{% endif %}
+                </td>
+                <td>
+                  <span style="font-weight:500;">{{ team.team_name }}</span>
+                  {% if my_team and team._id == my_team._id %}
+                  <span class="badge badge-open" style="margin-left:0.4rem;font-size:0.65rem;">You</span>
+                  {% endif %}
+                </td>
+                <td class="text-muted">{{ team.member_count }}</td>
+                <td><span class="pts">{{ team.points }}</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <div class="card">
+        <div class="empty" style="padding:2rem;">
+          <p>No teams yet.</p>
+        </div>
+      </div>
+      {% endif %}
     </div>
 
-    {% if hackathon.start_date %}
-    <div class="card" style="margin-bottom:1.5rem;padding:0.9rem 1.2rem;">
-        <div style="display:flex;gap:2rem;flex-wrap:wrap;">
-            <span style="font-size:0.85rem;color:var(--muted);">📅 Start: <strong style="color:var(--text);">{{ hackathon.start_date }}</strong></span>
-            {% if hackathon.end_date %}
-            <span style="font-size:0.85rem;color:var(--muted);">🏁 End: <strong style="color:var(--text);">{{ hackathon.end_date }}</strong></span>
-            {% endif %}
-            {% if hackathon.max_team_size %}
-            <span style="font-size:0.85rem;color:var(--muted);">👥 Max team size: <strong style="color:var(--text);">{{ hackathon.max_team_size }}</strong></span>
-            {% endif %}
+    <!-- RIGHT -->
+    <div>
+      <p class="section-label">Info</p>
+      <div class="card" style="margin-bottom:1rem;">
+        <div style="margin-bottom:1rem;">
+          <p class="text-small text-muted" style="margin-bottom:0.2rem;">Participants</p>
+          <p style="font-family:var(--font-serif);font-size:1.5rem;font-weight:600;">{{ hackathon.participants|length }}</p>
         </div>
+        <div style="margin-bottom:1rem;">
+          <p class="text-small text-muted" style="margin-bottom:0.2rem;">Teams</p>
+          <p style="font-family:var(--font-serif);font-size:1.5rem;font-weight:600;">{{ leaderboard|length }}</p>
+        </div>
+        <div class="divider"></div>
+        <form method="POST" action="{{ url_for('leave_hackathon', hackathon_id=hackathon._id) }}"
+              onsubmit="return confirm('Leave this hackathon? You will also be removed from your team.');">
+          <button type="submit" class="btn btn-danger btn-block">Leave hackathon</button>
+        </form>
+      </div>
     </div>
-    {% endif %}
-
-    <div style="display:grid;grid-template-columns:1fr 340px;gap:1.5rem;align-items:start;">
-        <!-- LEFT COLUMN -->
-        <div>
-            <!-- My team in this hackathon -->
-            <div class="section-header">My Team</div>
-            {% if my_team %}
-            <div class="card" style="border-color:rgba(91,141,246,0.3);">
-                <div class="flex-between" style="margin-bottom:0.3rem;">
-                    <h3>{{ my_team.team_name }}</h3>
-                    <span class="code-chip">{{ my_team.code }}</span>
-                </div>
-                <p>{{ my_team.description }}</p>
-                <p style="margin-top:0.5rem;font-size:0.82rem;color:var(--muted);">
-                    {{ my_team.users|length }} member(s) · {{ my_team.points }} pts
-                </p>
-                <div style="margin-top:1rem;display:flex;gap:0.5rem;">
-                    <a href="{{ url_for('team', team_id=my_team._id) }}" class="btn btn-primary btn-sm">Manage Team</a>
-                </div>
-            </div>
-            {% else %}
-            <div class="card">
-                <p style="color:var(--muted);margin-bottom:1rem;">You don't have a team yet.</p>
-                {% if not hackathon.teams_locked %}
-                <div style="display:flex;gap:0.75rem;">
-                    <a href="{{ url_for('create_team', hackathon_id=hackathon._id) }}" class="btn btn-primary btn-sm">Create Team</a>
-                    <a href="{{ url_for('join_team', hackathon_id=hackathon._id) }}" class="btn btn-outline btn-sm">Join with Code</a>
-                </div>
-                {% else %}
-                <div class="alert alert-info">Team registration is locked by the organizer.</div>
-                {% endif %}
-            </div>
-            {% endif %}
-
-            <!-- All Teams -->
-            <div class="section-header" style="margin-top:2rem;">All Teams</div>
-            {% if leaderboard %}
-            <div class="card" style="padding:0;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Team</th>
-                            <th>Members</th>
-                            <th>Points</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for team in leaderboard %}
-                        <tr>
-                            <td style="color:var(--muted);">{{ loop.index }}</td>
-                            <td>
-                                <strong>{{ team.team_name }}</strong>
-                                {% if my_team and team._id == my_team._id %}
-                                <span class="badge badge-open" style="margin-left:0.4rem;font-size:0.7rem;">You</span>
-                                {% endif %}
-                            </td>
-                            <td style="color:var(--muted);">{{ team.users|length }}</td>
-                            <td><strong style="color:var(--accent);">{{ team.points }}</strong></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="empty"><p>No teams yet.</p></div>
-            {% endif %}
-        </div>
-
-        <!-- RIGHT COLUMN -->
-        <div>
-            <div class="section-header">Hackathon Info</div>
-            <div class="card">
-                <p style="font-size:0.83rem;color:var(--muted);">Organizer</p>
-                <p style="margin-bottom:1rem;">{{ hackathon.organizer_name }}</p>
-                <p style="font-size:0.83rem;color:var(--muted);">Participants</p>
-                <p>{{ hackathon.participants|length }} joined</p>
-                <hr class="divider" />
-                <form method="POST" action="{{ url_for('leave_hackathon', hackathon_id=hackathon._id) }}"
-                      onsubmit="return confirm('Leave this hackathon? You will also be removed from your team.');">
-                    <button type="submit" class="btn btn-danger btn-sm" style="width:100%;justify-content:center;">Leave Hackathon</button>
-                </form>
-            </div>
-        </div>
-    </div>
+  </div>
 </div>
 {% endblock %}

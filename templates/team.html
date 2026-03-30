@@ -1,136 +1,159 @@
 {% extends "base.html" %}
-{% block title %}{{ team.team_name }} – TeamUp{% endblock %}
+{% block title %}{{ team.team_name }} — TeamUp{% endblock %}
 {% block content %}
-<div class="container">
-    <div class="page-header flex-between">
-        <div>
-            <h1>{{ team.team_name }}</h1>
-            {% if hackathon %}<p>{{ hackathon.name }}</p>{% endif %}
-        </div>
-        <span class="code-chip">{{ team.code }}</span>
+<div class="page fade-up">
+  <!-- Header -->
+  <div class="flex-between page-header">
+    <div>
+      {% if hackathon %}
+      <div class="flex-center gap-1" style="margin-bottom:0.5rem;">
+        <a href="{{ url_for('hackathon_lobby', hackathon_id=hackathon._id) }}" class="text-small text-muted">{{ hackathon.name }}</a>
+        <span class="text-muted text-small">/</span>
+        <span class="text-small text-muted">{{ team.team_name }}</span>
+      </div>
+      {% endif %}
+      <h1>{{ team.team_name }}</h1>
+      <p>{{ team.description or 'No description.' }}</p>
     </div>
-
-    {% if message %}
-    <div class="alert {% if 'success' in message.lower() or 'uploaded' in message.lower() %}alert-success{% else %}alert-error{% endif %}">
-        {{ message }}
+    <div class="flex-center gap-1">
+      <span class="chip">{{ team.code }}</span>
+      <span class="pts" style="font-size:1.1rem;">{{ team.points }} pts</span>
     </div>
-    {% endif %}
+  </div>
 
-    <div style="display:grid;grid-template-columns:1fr 300px;gap:1.5rem;align-items:start;">
-        <!-- LEFT -->
-        <div>
-            <!-- Description & GitHub -->
-            <div class="card">
-                <p style="margin-bottom:0.75rem;line-height:1.6;">{{ team.description or "No description provided." }}</p>
-                {% if team.github_repo %}
-                <a href="{{ team.github_repo }}" target="_blank" style="color:var(--accent);font-size:0.88rem;">
-                    🔗 {{ team.github_repo }}
-                </a>
-                {% endif %}
-                <p style="margin-top:0.75rem;font-size:0.8rem;color:var(--muted);">
-                    Created by {{ created_by_name }} · {{ team.date }} {{ team.time }}
-                </p>
-            </div>
+  {% if success %}
+  <div class="alert alert-success"><span class="alert-icon">✓</span> {{ success }}</div>
+  {% endif %}
+  {% if error %}
+  <div class="alert alert-error"><span class="alert-icon">⚠</span> {{ error }}</div>
+  {% endif %}
 
-            <!-- Members -->
-            <div class="section-header" style="margin-top:1.5rem;">Members</div>
-            <div class="card" style="padding:0;">
-                <table>
-                    <thead>
-                        <tr><th>Name</th><th>Reg. No</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                        {% for m in members %}
-                        <tr>
-                            <td>{{ m.name }}</td>
-                            <td style="color:var(--muted);">{{ m.regn_no }}</td>
-                            <td style="text-align:right;">
-                                {% if (user.regn_no == team.created_by or is_organizer) and m.regn_no != user.regn_no %}
-                                <form method="POST" action="{{ url_for('remove_member', team_id=team._id, regn_no=m.regn_no) }}"
-                                      onsubmit="return confirm('Remove this member?');" style="display:inline;">
-                                    <button type="submit" class="btn btn-danger btn-sm">Remove</button>
-                                </form>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Files -->
-            <div class="section-header" style="margin-top:1.5rem;">Files</div>
-            <div class="card">
-                <!-- Upload -->
-                <form method="POST" action="{{ url_for('team', team_id=team._id) }}" enctype="multipart/form-data"
-                      style="display:flex;gap:0.75rem;align-items:flex-end;margin-bottom:1rem;">
-                    <div class="form-group" style="flex:1;margin-bottom:0;">
-                        <label>Upload File (PDF, DOCX, PPT, PPTX · max 2MB)</label>
-                        <input type="file" name="file" accept=".pdf,.docx,.ppt,.pptx"
-                               style="padding:0.45rem;cursor:pointer;" />
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-sm" style="height:fit-content;">Upload</button>
-                </form>
-
-                {% if files %}
-                <table>
-                    <thead><tr><th>Filename</th><th>Uploaded by</th><th></th></tr></thead>
-                    <tbody>
-                        {% for f in files %}
-                        <tr>
-                            <td>📄 {{ f.filename }}</td>
-                            <td style="color:var(--muted);">{{ f.uploaded_by }}</td>
-                            <td style="text-align:right;display:flex;gap:0.5rem;justify-content:flex-end;">
-                                <a href="{{ url_for('download_file', team_id=team._id, file_id=f.id) }}"
-                                   class="btn btn-outline btn-sm">Download</a>
-                                <form method="POST" action="{{ url_for('delete_file', team_id=team._id, file_id=f.id) }}"
-                                      onsubmit="return confirm('Delete this file?');" style="display:inline;">
-                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                                </form>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p style="color:var(--muted);font-size:0.88rem;">No files uploaded yet.</p>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- RIGHT -->
-        <div>
-            <div class="section-header">Score</div>
-            <div class="card" style="text-align:center;">
-                <div style="font-family:'Syne',sans-serif;font-size:3rem;font-weight:800;color:var(--accent);">
-                    {{ team.points }}
-                </div>
-                <div style="color:var(--muted);font-size:0.85rem;">Points</div>
-            </div>
-
-            <div style="margin-top:1rem;">
-                {% if user.regn_no != team.created_by and not is_organizer %}
-                <form method="POST" action="{{ url_for('leave_team', team_id=team._id) }}"
-                      onsubmit="return confirm('Leave this team?');">
-                    <button type="submit" class="btn btn-outline" style="width:100%;justify-content:center;">Leave Team</button>
+  <div class="two-col">
+    <!-- LEFT -->
+    <div>
+      <!-- Members -->
+      <p class="section-label">Members</p>
+      <div class="card" style="padding:0;margin-bottom:1.5rem;">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Reg. No</th>
+              <th>Role</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in members %}
+            <tr>
+              <td style="font-weight:500;">{{ m.name }}</td>
+              <td><span class="chip">{{ m.regn_no }}</span></td>
+              <td class="text-muted text-small">
+                {% if m.is_creator %}Creator{% else %}Member{% endif %}
+              </td>
+              <td style="text-align:right;">
+                {% if not m.is_creator and (current_user.regn_no == team.created_by or is_organizer) %}
+                <form method="POST" action="{{ url_for('remove_member', team_id=team._id, regn_no=m.regn_no) }}"
+                      onsubmit="return confirm('Remove {{ m.name }}?');" style="display:inline;">
+                  <button type="submit" class="btn btn-danger btn-sm">Remove</button>
                 </form>
                 {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
 
-                {% if user.regn_no == team.created_by or is_organizer %}
-                <form method="POST" action="{{ url_for('delete_team', team_id=team._id) }}"
-                      onsubmit="return confirm('Delete this team and all its files?');" style="margin-top:0.5rem;">
-                    <button type="submit" class="btn btn-danger" style="width:100%;justify-content:center;">Delete Team</button>
-                </form>
-                {% endif %}
-
-                {% if hackathon %}
-                <a href="{{ url_for('hackathon_lobby', hackathon_id=hackathon._id) }}"
-                   class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:0.75rem;">
-                    ← Back to Lobby
-                </a>
-                {% endif %}
+      <!-- Files -->
+      <p class="section-label">Files</p>
+      <div class="card" style="margin-bottom:1.5rem;">
+        <!-- Upload form -->
+        <form method="POST" action="{{ url_for('team_detail', team_id=team._id) }}" enctype="multipart/form-data">
+          <div style="display:flex;gap:0.75rem;align-items:flex-end;">
+            <div class="form-group" style="flex:1;margin-bottom:0;">
+              <label>Upload file <span class="text-muted">(PDF, DOCX, PPT, PPTX · max 2 MB)</span></label>
+              <input type="file" name="file" accept=".pdf,.docx,.ppt,.pptx" />
             </div>
+            <button type="submit" class="btn btn-primary btn-sm" style="flex-shrink:0;">Upload</button>
+          </div>
+        </form>
+
+        {% if team.files %}
+        <div class="divider"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+          {% for f in team.files %}
+          <div class="file-pill">
+            <span>📄</span>
+            <span>{{ f.filename }}</span>
+            <a href="{{ url_for('download_file', team_id=team._id|string, file_id=f.file_id) }}" title="Download">↓</a>
+            <form method="POST" action="{{ url_for('delete_file', team_id=team._id|string, file_id=f.file_id) }}"
+                  onsubmit="return confirm('Delete {{ f.filename }}?');" style="display:inline;">
+              <button type="submit" title="Delete">✕</button>
+            </form>
+          </div>
+          {% endfor %}
         </div>
+        {% else %}
+        <p class="text-small text-muted" style="margin-top:1rem;">No files uploaded yet.</p>
+        {% endif %}
+      </div>
+
+      <!-- GitHub -->
+      {% if team.github_repo %}
+      <div class="card card-sm">
+        <p class="text-small text-muted" style="margin-bottom:0.3rem;">GitHub Repository</p>
+        <a href="{{ team.github_repo }}" target="_blank" style="color:var(--accent);font-size:0.83rem;word-break:break-all;">
+          {{ team.github_repo }}
+        </a>
+      </div>
+      {% endif %}
     </div>
+
+    <!-- RIGHT -->
+    <div>
+      <p class="section-label">Score</p>
+      <div class="card" style="text-align:center;margin-bottom:1rem;">
+        <div style="font-family:var(--font-serif);font-size:3rem;font-weight:600;color:var(--accent);line-height:1;">
+          {{ team.points }}
+        </div>
+        <p class="text-small text-muted" style="margin-top:0.3rem;">Points</p>
+      </div>
+
+      <p class="section-label">Details</p>
+      <div class="card" style="margin-bottom:1rem;">
+        <div style="margin-bottom:0.75rem;">
+          <p class="text-small text-muted">Created by</p>
+          <p class="text-small" style="margin-top:0.15rem;">{{ created_by_name }}</p>
+        </div>
+        <div>
+          <p class="text-small text-muted">Created on</p>
+          <p class="text-small text-mono" style="margin-top:0.15rem;">{{ team.date }} {{ team.time }}</p>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;flex-direction:column;gap:0.5rem;">
+        {% if current_user.regn_no != team.created_by and not is_organizer %}
+        <form method="POST" action="{{ url_for('leave_team', team_id=team._id|string) }}"
+              onsubmit="return confirm('Leave this team?');">
+          <button type="submit" class="btn btn-ghost btn-block">Leave team</button>
+        </form>
+        {% endif %}
+
+        {% if current_user.regn_no == team.created_by or is_organizer %}
+        <form method="POST" action="{{ url_for('delete_team', team_id=team._id|string) }}"
+              onsubmit="return confirm('Permanently delete this team and all its files?');">
+          <button type="submit" class="btn btn-danger btn-block">Delete team</button>
+        </form>
+        {% endif %}
+
+        {% if hackathon %}
+        <a href="{{ url_for('hackathon_lobby', hackathon_id=hackathon._id) }}"
+           class="btn btn-ghost btn-block">← Back to lobby</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
